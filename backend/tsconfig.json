@@ -10,5 +10,6 @@
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["n8n", "node_modules", "dist"]
 }
