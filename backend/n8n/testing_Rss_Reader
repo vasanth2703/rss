@@ -17,7 +17,7 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -700,
+        -480,
         140
       ]
     },
@@ -28,39 +28,8 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -700,
+        -480,
         -60
-      ]
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "apiUrl",
-              "value": "https://livenews.avk07373.workers.dev/api/feed"
-            }
-          ],
-          "number": [
-            {
-              "name": "maxDaysOld",
-              "value": 7
-            },
-            {
-              "name": "maxArticlesPerRun",
-              "value": 20
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "c194b150-1b5e-49b0-9c29-373b9ef28292",
-      "name": "Pipeline Configuration",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        -460,
-        40
       ]
     },
     {
@@ -73,27 +42,27 @@
       "type": "n8n-nodes-base.rssFeedRead",
       "typeVersion": 1.1,
       "position": [
-        -220,
+        -240,
         40
       ]
     },
     {
       "parameters": {
-        "jsCode": "// LogiPulse Ingestion Pipeline: Filter Recent (< 7 Days), Clean & Categorize\nlet maxDays = 7;\ntry {\n  maxDays = $('Pipeline Configuration').first().json.maxDaysOld || 7;\n} catch (e) {}\n\nconst cutoffTime = Date.now() - (maxDays * 24 * 60 * 60 * 1000);\nconst items = $input.all();\nconst validArticles = [];\nconst seenUrls = new Set();\n\nfor (const item of items) {\n  const raw = item.json;\n\n  // 1. Strict Date Filter: Only allow articles published within the last 7 days\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n\n  if (isNaN(pubTime) || pubTime < cutoffTime) {\n    continue; // Skip stale articles\n  }\n\n  // 2. Extract unique Source URL\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl)) {\n    continue;\n  }\n  seenUrls.add(sourceUrl);\n\n  // 3. Clean Title & Extract Source Name\n  let title = (raw.title || '').trim();\n  let source = 'Logistics News';\n\n  // Google News titles format: \"Headline Text - Publisher\"\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const possibleSource = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (possibleSource) source = possibleSource;\n  }\n\n  // If RSS source tag contains publisher info\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // Strip HTML markup from snippet/description\n  let description = (raw.contentSnippet || raw.content || raw.description || '').trim();\n  description = description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();\n\n  // 4. Intelligent Categorization & Content Type Classification\n  const combined = `${title} ${description}`.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  // AI & Robotics\n  if (/(ai|robot|autonomous|drone|computer vision|algorithm|machine learning|llm|automation|amr|agv|humanoid|sensor)/.test(combined)) {\n    category = 'AI & Robotics';\n    contentType = 'ai_insight';\n  }\n  // Warehousing\n  else if (/(warehouse|fulfillment|dark store|inventory|storage|pallet|forklift|cold storage|distribution center|racking|wms)/.test(combined)) {\n    category = 'Warehousing';\n  }\n  // Shipping & Maritime\n  else if (/(ship|ocean|maritime|port|container|vessel|dock|carrier|red sea|suez|terminal operator|drayage)/.test(combined)) {\n    category = 'Shipping';\n  }\n  // India Logistics\n  else if (/(india|delhi|mumbai|gujarat|bengaluru|nagpur|dfc|nhai|railway|concor|bharatmala|ulip|sagarmala|dedicated freight)/.test(combined)) {\n    category = 'India';\n  }\n  // Transportation & Fleet\n  else if (/(truck|fleet|highway|electric truck|ev freight|intermodal|linehaul|rail freight|driver shortage|freight carrier)/.test(combined)) {\n    category = 'Transportation';\n  }\n  // Supply Chain Resiliency & Trade\n  else if (/(supply chain|nearshore|reshoring|sourcing|procurement|tariff|supplier|lead time|shortage|geopolitical)/.test(combined)) {\n    category = 'Supply Chain';\n  }\n\n  // Market Trend detection\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|benchmark|growth rate|index|quarterly report|q1|q2|q3|q4)/.test(combined)) {\n    if (contentType !== 'ai_insight') {\n      contentType = 'trend';\n    }\n  }\n\n  // 5. Curated Unsplash fallback images by category\n  const categoryImages = {\n    'AI & Robotics': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'Warehousing': 'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'Shipping': 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'Transportation': 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'India': 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'Supply Chain': 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'Logistics': 'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80'\n  };\n\n  const imageUrl = raw.enclosure?.url || categoryImages[category] || categoryImages['Logistics'];\n\n  validArticles.push({\n    json: {\n      title,\n      description,\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\nreturn validArticles;"
+        "jsCode": "// LogiPulse Ingestion Pipeline: Filter Recent (< 7 Days), Clean & Categorize\nconst MAX_DAYS = 7;\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\nconst items = $input.all();\nconst validArticles = [];\nconst seenUrls = new Set();\n\nfor (const item of items) {\n  const raw = item.json;\n\n  // 1. Strict Date Filter: Only allow articles published within the last 7 days\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n\n  if (isNaN(pubTime) || pubTime < cutoffTime) {\n    continue; // Skip stale articles\n  }\n\n  // 2. Extract unique Source URL\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl)) {\n    continue;\n  }\n  seenUrls.add(sourceUrl);\n\n  // 3. Clean Title & Extract Source Name\n  let title = (raw.title || '').trim();\n  let source = 'Logistics News';\n\n  // Google News titles format: \"Headline Text - Publisher\"\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const possibleSource = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (possibleSource) source = possibleSource;\n  }\n\n  // If RSS source tag contains publisher info\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // Strip HTML markup from snippet/description\n  let description = (raw.contentSnippet || raw.content || raw.description || '').trim();\n  description = description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();\n\n  // 4. Intelligent Categorization & Content Type Classification\n  const combined = `${title} ${description}`.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  // AI & Robotics\n  if (/(ai|robot|autonomous|drone|computer vision|algorithm|machine learning|llm|automation|amr|agv|humanoid|sensor)/.test(combined)) {\n    category = 'AI & Robotics';\n    contentType = 'ai_insight';\n  }\n  // Warehousing\n  else if (/(warehouse|fulfillment|dark store|inventory|storage|pallet|forklift|cold storage|distribution center|racking|wms)/.test(combined)) {\n    category = 'Warehousing';\n  }\n  // Shipping & Maritime\n  else if (/(ship|ocean|maritime|port|container|vessel|dock|carrier|red sea|suez|terminal operator|drayage)/.test(combined)) {\n    category = 'Shipping';\n  }\n  // India Logistics\n  else if (/(india|delhi|mumbai|gujarat|bengaluru|nagpur|dfc|nhai|railway|concor|bharatmala|ulip|sagarmala|dedicated freight)/.test(combined)) {\n    category = 'India';\n  }\n  // Transportation & Fleet\n  else if (/(truck|fleet|highway|electric truck|ev freight|intermodal|linehaul|rail freight|driver shortage|freight carrier)/.test(combined)) {\n    category = 'Transportation';\n  }\n  // Supply Chain Resiliency & Trade\n  else if (/(supply chain|nearshore|reshoring|sourcing|procurement|tariff|supplier|lead time|shortage|geopolitical)/.test(combined)) {\n    category = 'Supply Chain';\n  }\n\n  // Market Trend detection\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|benchmark|growth rate|index|quarterly report|q1|q2|q3|q4)/.test(combined)) {\n    if (contentType !== 'ai_insight') {\n      contentType = 'trend';\n    }\n  }\n\n  // 5. Curated Unsplash fallback images by category\n  const categoryImages = {\n    'AI & Robotics': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'Warehousing': 'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'Shipping': 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'Transportation': 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'India': 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'Supply Chain': 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'Logistics': 'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80'\n  };\n\n  const imageUrl = raw.enclosure?.url || categoryImages[category] || categoryImages['Logistics'];\n\n  validArticles.push({\n    json: {\n      title,\n      description,\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\nreturn validArticles;"
       },
       "id": "78a9c201-92df-4d37-881b-858348d407ff",
-      "name": "Filter (Last 7 Days) & Categorize",
+      "name": "Filter (< 7 Days) & Categorize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        40,
+        0,
         40
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Pipeline Configuration').first().json.apiUrl || 'http://127.0.0.1:8787/api/feed' }}",
+        "url": "https://livenews.avk07373.workers.dev/api/feed",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -120,7 +89,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        300,
+        260,
         40
       ]
     },
@@ -133,7 +102,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
+        520,
         40
       ]
     }
@@ -143,7 +112,7 @@
       "main": [
         [
           {
-            "node": "Pipeline Configuration",
+            "node": "Fetch Logistics RSS News",
             "type": "main",
             "index": 0
           }
@@ -151,17 +120,6 @@
       ]
     },
     "Manual Test Run": {
-      "main": [
-        [
-          {
-            "node": "Pipeline Configuration",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pipeline Configuration": {
       "main": [
         [
           {
@@ -176,14 +134,14 @@
       "main": [
         [
           {
-            "node": "Filter (Last 7 Days) & Categorize",
+            "node": "Filter (< 7 Days) & Categorize",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter (Last 7 Days) & Categorize": {
+    "Filter (< 7 Days) & Categorize": {
       "main": [
         [
           {
@@ -210,4 +168,3 @@
     "executionOrder": "v1"
   }
 }
-
