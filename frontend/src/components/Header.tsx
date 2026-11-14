@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Search, RefreshCw, Sun, Moon, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, RefreshCw, Sun, Moon, X, Bell, Clock, ArrowUp, ArrowUpRight } from 'lucide-react';
+import { FeedItem } from '../types/feed';
+import { formatRelativeTime } from '../utils/date';
 
 interface HeaderProps {
   darkMode: boolean;
@@ -10,6 +12,9 @@ interface HeaderProps {
   onSearchChange: (query: string) => void;
   isConnected?: boolean;
   lastCheckedTime?: string;
+  newArticles?: FeedItem[];
+  newCount?: number;
+  onViewNewArticles?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,8 +26,36 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   isConnected = true,
   lastCheckedTime,
+  newArticles = [],
+  newCount = 0,
+  onViewNewArticles,
 }) => {
   const [showSearchInput, setShowSearchInput] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Close notification popover on outside click or Escape key
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsNotificationOpen(false);
+      }
+    }
+
+    if (isNotificationOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isNotificationOpen]);
 
   return (
     <header className="sticky top-0 z-30 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-colors">
@@ -88,6 +121,114 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Search className="w-4 h-4" />
             </button>
+
+            {/* Notification Bell Icon Section */}
+            <div className="relative" ref={notificationRef}>
+              <button
+                onClick={() => setIsNotificationOpen((prev) => !prev)}
+                className={`relative p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${
+                  isNotificationOpen ? 'bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400' : ''
+                }`}
+                title="Notifications: newly added news from n8n"
+                aria-label="Notifications"
+              >
+                <Bell className={`w-4 h-4 ${newCount > 0 ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
+                {newCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center px-1 rounded-full bg-emerald-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-900 animate-pulse">
+                    {newCount > 99 ? '99+' : newCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Popover Dropdown */}
+              {isNotificationOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-900/10 z-50 overflow-hidden animate-fade-in">
+                  {/* Dropdown Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
+                    <div className="flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                        Live News Notifications
+                      </span>
+                      {newCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                          {newCount} new
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setIsNotificationOpen(false)}
+                      className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                      aria-label="Close notifications"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Dropdown Content */}
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/50">
+                    {newArticles && newArticles.length > 0 ? (
+                      newArticles.slice(0, 10).map((article) => (
+                        <div
+                          key={article.id}
+                          onClick={() => {
+                            if (onViewNewArticles) onViewNewArticles();
+                            setIsNotificationOpen(false);
+                          }}
+                          className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {article.category || 'News'}
+                            </span>
+                            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>{formatRelativeTime(article.published_at)}</span>
+                            </span>
+                          </div>
+                          <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 leading-snug">
+                            {article.title}
+                          </h4>
+                          <div className="flex items-center justify-between mt-2 text-[11px] text-slate-400">
+                            <span className="truncate max-w-[180px]">{article.source || 'n8n pipeline'}</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium inline-flex items-center gap-0.5">
+                              <span>Show in feed</span>
+                              <ArrowUpRight className="w-3 h-3" />
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-8 px-4 text-center">
+                        <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
+                          <Bell className="w-5 h-5" />
+                        </div>
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">All caught up!</p>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-[200px] mx-auto">
+                          Newly ingested news from the n8n pipeline will appear here in real-time.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dropdown Footer */}
+                  {newArticles && newArticles.length > 0 && (
+                    <div className="p-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                      <button
+                        onClick={() => {
+                          if (onViewNewArticles) onViewNewArticles();
+                          setIsNotificationOpen(false);
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                      >
+                        <span>Display all {newCount} new {newCount === 1 ? 'article' : 'articles'} at top</span>
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Refresh Button */}
             <button

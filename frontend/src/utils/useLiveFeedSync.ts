@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { FeedItem } from '../types/feed';
 
 interface LiveSyncState {
   hasNewItems: boolean;
   newCount: number;
+  newArticles: FeedItem[];
   latestIdOnServer: number;
   baselineId: number;
   isConnected: boolean;
@@ -13,6 +15,7 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
   const [syncState, setSyncState] = useState<LiveSyncState>({
     hasNewItems: false,
     newCount: 0,
+    newArticles: [],
     latestIdOnServer: initialFeedHighestId,
     baselineId: initialFeedHighestId,
     isConnected: false,
@@ -35,7 +38,7 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
     }
   }, [initialFeedHighestId]);
 
-  // Check server for latest item ID
+  // Check server for latest item ID and fetch any newly received articles
   const checkLatestId = useCallback(async () => {
     try {
       const response = await fetch('/api/feed/latest-id', {
@@ -55,6 +58,7 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
           setSyncState({
             hasNewItems: false,
             newCount: 0,
+            newArticles: [],
             latestIdOnServer: serverMaxId,
             baselineId: baseline,
             isConnected: true,
@@ -63,9 +67,26 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
           return;
         }
 
-        // Subsequent checks: ONLY show "new data received" if n8n has written NEW articles (serverMaxId > baseline)
+        // Subsequent checks: ONLY show new data if n8n has written NEW articles (serverMaxId > baseline)
         const baseline = baselineIdRef.current;
         const diff = serverMaxId > baseline ? serverMaxId - baseline : 0;
+
+        let fetchedArticles: FeedItem[] = [];
+        if (diff > 0) {
+          try {
+            const feedRes = await fetch(`/api/feed?since_id=${baseline}&limit=20`, {
+              headers: { Accept: 'application/json' },
+            });
+            if (feedRes.ok) {
+              const feedData = await feedRes.json();
+              if (Array.isArray(feedData.data)) {
+                fetchedArticles = feedData.data;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
 
         setSyncState((prev) => ({
           ...prev,
@@ -73,6 +94,7 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
           latestIdOnServer: serverMaxId,
           hasNewItems: diff > 0,
           newCount: diff,
+          newArticles: diff > 0 ? fetchedArticles : [],
           lastCheckedTime: currentTime,
         }));
 
@@ -109,36 +131,28 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
             const data = JSON.parse(event.data);
             if (data.latest_id !== undefined) {
               const serverMaxId = Number(data.latest_id || 0);
-              const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
               if (!isInitializedRef.current) {
                 isInitializedRef.current = true;
                 const baseline = Math.max(serverMaxId, baselineIdRef.current);
                 baselineIdRef.current = baseline;
-                setSyncState({
+                setSyncState((prev) => ({
+                  ...prev,
                   hasNewItems: false,
                   newCount: 0,
+                  newArticles: [],
                   latestIdOnServer: serverMaxId,
                   baselineId: baseline,
                   isConnected: true,
-                  lastCheckedTime: currentTime,
-                });
+                  lastCheckedTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                }));
                 return;
               }
 
               const baseline = baselineIdRef.current;
-              const diff = serverMaxId > baseline ? serverMaxId - baseline : 0;
-
-              setSyncState((prev) => ({
-                ...prev,
-                latestIdOnServer: serverMaxId,
-                hasNewItems: diff > 0,
-                newCount: diff,
-                lastCheckedTime: currentTime,
-              }));
-
-              if (diff > 0 && onNewItemsAvailable) {
-                onNewItemsAvailable(diff);
+              if (serverMaxId > baseline) {
+                // Fetch the new articles via checkLatestId
+                checkLatestId();
               }
             }
           } catch {
@@ -183,9 +197,9 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
         wsRef.current.close();
       }
     };
-  }, [checkLatestId, onNewItemsAvailable]);
+  }, [checkLatestId]);
 
-  // Reset after user clicks "view new data"
+  // Reset after user views new data
   const resetNewItems = useCallback((newBaseline?: number) => {
     setSyncState((prev) => {
       const targetBaseline = newBaseline !== undefined ? newBaseline : prev.latestIdOnServer;
@@ -195,6 +209,7 @@ export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvai
         ...prev,
         hasNewItems: false,
         newCount: 0,
+        newArticles: [],
         baselineId: targetBaseline,
       };
     });

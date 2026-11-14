@@ -47,7 +47,7 @@ export const App: React.FC = () => {
 
   // Real-time synchronization hook (WebSocket + smart fallback polling)
   // Only flags hasNewItems when new output is actually received from n8n pipeline!
-  const { hasNewItems, newCount, isConnected, lastCheckedTime, resetNewItems, baselineId } = useLiveFeedSync(highestId);
+  const { hasNewItems, newCount, newArticles, isConnected, lastCheckedTime, resetNewItems, baselineId } = useLiveFeedSync(highestId);
 
   // Sync dark mode class on root document
   useEffect(() => {
@@ -172,6 +172,9 @@ export const App: React.FC = () => {
         onSearchChange={setSearchQuery}
         isConnected={isConnected}
         lastCheckedTime={lastCheckedTime}
+        newArticles={newArticles}
+        newCount={newCount}
+        onViewNewArticles={handleApplyLiveUpdates}
       />
 
       {/* Category Navigation Bar */}
