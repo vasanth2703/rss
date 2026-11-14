@@ -17,7 +17,7 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -480,
+        -680,
         140
       ]
     },
@@ -28,9 +28,25 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -480,
+        -680,
         -60
       ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://livenews.avk07373.workers.dev/api/feed?limit=100",
+        "options": {}
+      },
+      "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Get Existing D1 Headlines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        40
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -42,20 +58,20 @@
       "type": "n8n-nodes-base.rssFeedRead",
       "typeVersion": 1.1,
       "position": [
-        -240,
+        -200,
         40
       ]
     },
     {
       "parameters": {
-        "jsCode": "// LogiPulse Ingestion Pipeline: Filter Recent (< 7 Days), Clean & Categorize\nconst MAX_DAYS = 7;\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\nconst items = $input.all();\nconst validArticles = [];\nconst seenUrls = new Set();\n\nfor (const item of items) {\n  const raw = item.json;\n\n  // 1. Strict Date Filter: Only allow articles published within the last 7 days\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n\n  if (isNaN(pubTime) || pubTime < cutoffTime) {\n    continue; // Skip stale articles\n  }\n\n  // 2. Extract unique Source URL\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl)) {\n    continue;\n  }\n  seenUrls.add(sourceUrl);\n\n  // 3. Clean Title & Extract Source Name\n  let title = (raw.title || '').trim();\n  let source = 'Logistics News';\n\n  // Google News titles format: \"Headline Text - Publisher\"\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const possibleSource = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (possibleSource) source = possibleSource;\n  }\n\n  // If RSS source tag contains publisher info\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // Strip HTML markup from snippet/description\n  let description = (raw.contentSnippet || raw.content || raw.description || '').trim();\n  description = description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();\n\n  // 4. Intelligent Categorization & Content Type Classification\n  const combined = `${title} ${description}`.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  // AI & Robotics\n  if (/(ai|robot|autonomous|drone|computer vision|algorithm|machine learning|llm|automation|amr|agv|humanoid|sensor)/.test(combined)) {\n    category = 'AI & Robotics';\n    contentType = 'ai_insight';\n  }\n  // Warehousing\n  else if (/(warehouse|fulfillment|dark store|inventory|storage|pallet|forklift|cold storage|distribution center|racking|wms)/.test(combined)) {\n    category = 'Warehousing';\n  }\n  // Shipping & Maritime\n  else if (/(ship|ocean|maritime|port|container|vessel|dock|carrier|red sea|suez|terminal operator|drayage)/.test(combined)) {\n    category = 'Shipping';\n  }\n  // India Logistics\n  else if (/(india|delhi|mumbai|gujarat|bengaluru|nagpur|dfc|nhai|railway|concor|bharatmala|ulip|sagarmala|dedicated freight)/.test(combined)) {\n    category = 'India';\n  }\n  // Transportation & Fleet\n  else if (/(truck|fleet|highway|electric truck|ev freight|intermodal|linehaul|rail freight|driver shortage|freight carrier)/.test(combined)) {\n    category = 'Transportation';\n  }\n  // Supply Chain Resiliency & Trade\n  else if (/(supply chain|nearshore|reshoring|sourcing|procurement|tariff|supplier|lead time|shortage|geopolitical)/.test(combined)) {\n    category = 'Supply Chain';\n  }\n\n  // Market Trend detection\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|benchmark|growth rate|index|quarterly report|q1|q2|q3|q4)/.test(combined)) {\n    if (contentType !== 'ai_insight') {\n      contentType = 'trend';\n    }\n  }\n\n  // 5. Curated Unsplash fallback images by category\n  const categoryImages = {\n    'AI & Robotics': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'Warehousing': 'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'Shipping': 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'Transportation': 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'India': 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'Supply Chain': 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'Logistics': 'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80'\n  };\n\n  const imageUrl = raw.enclosure?.url || categoryImages[category] || categoryImages['Logistics'];\n\n  validArticles.push({\n    json: {\n      title,\n      description,\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\nreturn validArticles;"
+        "jsCode": "// LogiPulse Smart Content Deduplicator\n// 1. Rejects articles older than 7 days\n// 2. Rejects exact URL duplicates\n// 3. Rejects similar/rephrased scrap content (comparing against D1 & current batch)\n\nconst MAX_DAYS = 7;\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\n// Stop words for title tokenization\nconst stopWords = new Set([\n  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',\n  'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',\n  'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',\n  'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',\n  'having', 'he', 'her', 'here', 'how', 'i', 'if', 'in', 'into', 'is', 'it',\n  'its', 'just', 'more', 'most', 'must', 'my', 'no', 'nor', 'not', 'now', 'of',\n  'off', 'on', 'once', 'only', 'or', 'other', 'our', 'out', 'over', 'own', 'same',\n  'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs',\n  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to',\n  'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when',\n  'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'you', 'your',\n  'says', 'said', 'new', 'top', 'first', 'week', 'report', 'reports'\n]);\n\nfunction extractWords(text) {\n  return new Set(\n    (text || '')\n      .toLowerCase()\n      .replace(/[^\\w\\s]/g, ' ')\n      .split(/\\s+/)\n      .filter(w => w.length >= 3 && !stopWords.has(w))\n  );\n}\n\nfunction isSimilar(titleA, titleB) {\n  const a = extractWords(titleA);\n  const b = extractWords(titleB);\n  if (a.size === 0 || b.size === 0) return false;\n\n  let common = 0;\n  for (const w of a) {\n    if (b.has(w)) common++;\n  }\n\n  // If 4 or more key words match (e.g. \"mahindra\", \"logistics\", \"appoints\", \"turra\", \"ceo\")\n  if (common >= 4) return true;\n\n  // For short titles (<= 5 words), 3 matching words indicates duplicate news\n  const minSize = Math.min(a.size, b.size);\n  if (minSize <= 5 && common >= 3) return true;\n\n  // Overlap ratio check\n  const overlap = common / minSize;\n  return overlap >= 0.58;\n}\n\n// 1. Load existing headlines already in D1 database\nconst existingTitles = [];\ntry {\n  const d1Res = $('Get Existing D1 Headlines').first()?.json;\n  if (d1Res && Array.isArray(d1Res.data)) {\n    for (const item of d1Res.data) {\n      if (item.title) existingTitles.push(item.title);\n    }\n  }\n} catch (e) {}\n\nconst incomingItems = $input.all();\nconst acceptedArticles = [];\nconst acceptedTitles = [];\nconst seenUrls = new Set();\n\nfor (const item of incomingItems) {\n  const raw = item.json;\n\n  // Date filter: strictly within last 7 days\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n  if (isNaN(pubTime) || pubTime < cutoffTime) continue;\n\n  // URL check\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl)) continue;\n\n  // Clean Title\n  let title = (raw.title || '').trim();\n  let source = 'Logistics News';\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const src = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (src) source = src;\n  }\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // A. Check against articles ALREADY in Cloudflare D1 (previous runs)\n  let isDuplicateOfExisting = false;\n  for (const existingTitle of existingTitles) {\n    if (isSimilar(title, existingTitle)) {\n      isDuplicateOfExisting = true;\n      break;\n    }\n  }\n  if (isDuplicateOfExisting) continue; // Skip scrap content already in D1\n\n  // B. Check against articles already accepted in THIS batch\n  let isDuplicateInBatch = false;\n  for (const batchTitle of acceptedTitles) {\n    if (isSimilar(title, batchTitle)) {\n      isDuplicateInBatch = true;\n      break;\n    }\n  }\n  if (isDuplicateInBatch) continue; // Skip duplicate reports in same run\n\n  // Clean description\n  let description = (raw.contentSnippet || raw.content || raw.description || '').trim();\n  description = description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();\n\n  // Categorization\n  const combined = `${title} ${description}`.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  if (/(ai|robot|autonomous|drone|computer vision|algorithm|machine learning|llm|automation|amr|agv|humanoid|sensor)/.test(combined)) {\n    category = 'AI & Robotics';\n    contentType = 'ai_insight';\n  } else if (/(warehouse|fulfillment|dark store|inventory|storage|pallet|forklift|cold storage|distribution center|racking|wms)/.test(combined)) {\n    category = 'Warehousing';\n  } else if (/(ship|ocean|maritime|port|container|vessel|dock|carrier|red sea|suez|terminal operator|drayage)/.test(combined)) {\n    category = 'Shipping';\n  } else if (/(india|delhi|mumbai|gujarat|bengaluru|nagpur|dfc|nhai|railway|concor|bharatmala|ulip|sagarmala|dedicated freight)/.test(combined)) {\n    category = 'India';\n  } else if (/(truck|fleet|highway|electric truck|ev freight|intermodal|linehaul|rail freight|driver shortage|freight carrier)/.test(combined)) {\n    category = 'Transportation';\n  } else if (/(supply chain|nearshore|reshoring|sourcing|procurement|tariff|supplier|lead time|shortage|geopolitical)/.test(combined)) {\n    category = 'Supply Chain';\n  }\n\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|benchmark|growth rate|index|quarterly report|q1|q2|q3|q4)/.test(combined)) {\n    if (contentType !== 'ai_insight') {\n      contentType = 'trend';\n    }\n  }\n\n  const categoryImages = {\n    'AI & Robotics': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'Warehousing': 'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'Shipping': 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'Transportation': 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'India': 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'Supply Chain': 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'Logistics': 'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80'\n  };\n\n  const imageUrl = raw.enclosure?.url || categoryImages[category] || categoryImages['Logistics'];\n\n  seenUrls.add(sourceUrl);\n  acceptedTitles.push(title);\n\n  acceptedArticles.push({\n    json: {\n      title,\n      description,\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\nreturn acceptedArticles;"
       },
       "id": "78a9c201-92df-4d37-881b-858348d407ff",
-      "name": "Filter (< 7 Days) & Categorize",
+      "name": "Filter & Deduplicate Similar Content",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        0,
+        60,
         40
       ]
     },
@@ -74,36 +90,28 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $json }}",
-        "options": {
-          "neverError": true,
-          "response": {
-            "response": {
-              "fullResponse": true
-            }
-          }
-        }
+        "jsonBody": "={{ $json }}"
       },
       "id": "f58de201-419b-4bc6-921c-34859a4bb331",
       "name": "Ingest into LogiPulse D1",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        260,
+        320,
         40
       ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Ingestion Run Summary\nconst items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const j = item.json;\n  const statusCode = j.statusCode || j.status || 0;\n  if (statusCode === 201 || j.id && !j.duplicate) {\n    inserted++;\n  } else if (statusCode === 409 || j.duplicate || j.status === 'duplicate_skipped') {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    status: errors === 0 ? 'success' : 'completed'\n  }\n}];"
+        "jsCode": "// Ingestion Run Summary\nconst items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const j = item.json;\n  const statusCode = j.statusCode || j.status || 0;\n  if (statusCode === 201 || (j.id && !j.duplicate)) {\n    inserted++;\n  } else if (statusCode === 409 || j.duplicate || j.status === 'duplicate_skipped') {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    status: errors === 0 ? 'success' : 'completed'\n  }\n}];"
       },
       "id": "893c0291-72da-4f11-9a75-b82736159c34",
       "name": "Ingestion Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        520,
+        580,
         40
       ]
     }
@@ -113,7 +121,7 @@
       "main": [
         [
           {
-            "node": "Fetch Logistics RSS News",
+            "node": "Get Existing D1 Headlines",
             "type": "main",
             "index": 0
           }
@@ -121,6 +129,17 @@
       ]
     },
     "Manual Test Run": {
+      "main": [
+        [
+          {
+            "node": "Get Existing D1 Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing D1 Headlines": {
       "main": [
         [
           {
@@ -135,14 +154,14 @@
       "main": [
         [
           {
-            "node": "Filter (< 7 Days) & Categorize",
+            "node": "Filter & Deduplicate Similar Content",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter (< 7 Days) & Categorize": {
+    "Filter & Deduplicate Similar Content": {
       "main": [
         [
           {
