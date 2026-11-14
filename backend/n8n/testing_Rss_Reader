@@ -38,7 +38,7 @@
           "string": [
             {
               "name": "apiUrl",
-              "value": "http://host.docker.internal:8787/api/feed"
+              "value": "https://livenews.avk07373.workers.dev/api/feed"
             }
           ],
           "number": [
