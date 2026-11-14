@@ -6,7 +6,6 @@ import { FeedCard } from './components/FeedCard';
 import { SkeletonCard } from './components/SkeletonCard';
 import { EmptyState } from './components/EmptyState';
 import { ErrorState } from './components/ErrorState';
-import { TestModal } from './components/TestModal';
 import { LiveUpdateBanner } from './components/LiveUpdateBanner';
 import { CategoryOption, FeedItem } from './types/feed';
 import { fetchFeed } from './utils/api';
@@ -15,13 +14,10 @@ import { Database, Zap, ArrowDownCircle } from 'lucide-react';
 
 const CATEGORIES: CategoryOption[] = [
   'All',
-  'Logistics',
-  'Supply Chain',
-  'AI & Robotics',
-  'Warehousing',
-  'Transportation',
+  'Freight Forwarding',
   'Shipping',
-  'India',
+  'Logistics',
+  'Import & Export',
 ];
 
 export const App: React.FC = () => {
@@ -53,9 +49,6 @@ export const App: React.FC = () => {
 
   // Real-time synchronization hook (WebSocket + smart fallback polling)
   const { hasNewItems, newCount, isConnected, lastCheckedTime, resetNewItems } = useLiveFeedSync(highestId);
-
-  // Test Ingestion Modal state
-  const [isTestModalOpen, setIsTestModalOpen] = useState<boolean>(false);
 
   // Sync dark mode class on root document
   useEffect(() => {
@@ -178,7 +171,6 @@ export const App: React.FC = () => {
         isRefreshing={isRefreshing}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onOpenTestModal={() => setIsTestModalOpen(true)}
         isConnected={isConnected}
         lastCheckedTime={lastCheckedTime}
       />
@@ -269,7 +261,7 @@ export const App: React.FC = () => {
           <div>
             <span className="font-semibold text-slate-700 dark:text-slate-300">LogiPulse Engine</span>
             <span className="mx-2">•</span>
-            <span>Automated Logistics & Supply Chain Content Pipeline</span>
+            <span>Automated Logistics &amp; Supply Chain Content Pipeline</span>
           </div>
 
           <div className="flex items-center gap-4">
@@ -277,22 +269,9 @@ export const App: React.FC = () => {
               <Zap className="w-3.5 h-3.5 text-amber-500" />
               <span>Cloudflare Workers + D1</span>
             </span>
-            <button
-              onClick={() => setIsTestModalOpen(true)}
-              className="hover:text-emerald-500 underline underline-offset-2"
-            >
-              Test Ingest API
-            </button>
           </div>
         </div>
       </footer>
-
-      {/* Interactive POST /api/feed Ingestion Modal */}
-      <TestModal
-        isOpen={isTestModalOpen}
-        onClose={() => setIsTestModalOpen(false)}
-        onSuccess={() => loadFeed(true, false)}
-      />
     </div>
   );
 };

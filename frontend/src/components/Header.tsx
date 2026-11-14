@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, RefreshCw, Sun, Moon, Plus, X } from 'lucide-react';
+import { Search, RefreshCw, Sun, Moon, X } from 'lucide-react';
 
 interface HeaderProps {
   darkMode: boolean;
@@ -8,7 +8,6 @@ interface HeaderProps {
   isRefreshing: boolean;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  onOpenTestModal: () => void;
   isConnected?: boolean;
   lastCheckedTime?: string;
 }
@@ -20,7 +19,6 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   searchQuery,
   onSearchChange,
-  onOpenTestModal,
   isConnected = true,
   lastCheckedTime,
 }) => {
@@ -53,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate font-medium">
-                Logistics • Supply Chain • AI
+                Freight Forwarding • Shipping • Logistics • Import &amp; Export
               </p>
             </div>
           </div>
@@ -64,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search freight, AI, warehousing..."
+                placeholder="Search freight, shipping, customs, tariffs..."
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="w-full pl-9 pr-8 py-1.5 text-sm rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none transition-all"
@@ -89,16 +87,6 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="Toggle search"
             >
               <Search className="w-4 h-4" />
-            </button>
-
-            {/* Test Feed POST Modal button */}
-            <button
-              onClick={onOpenTestModal}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              title="Test POST /api/feed endpoint"
-            >
-              <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">Test POST</span>
             </button>
 
             {/* Refresh Button */}
@@ -140,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
               <input
                 type="text"
                 autoFocus
-                placeholder="Search logistics, AI, shipping..."
+                placeholder="Search freight, shipping, customs, tariffs..."
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 text-sm rounded-lg bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none"
@@ -150,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => onSearchChange('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>

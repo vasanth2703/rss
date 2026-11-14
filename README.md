@@ -65,13 +65,12 @@ newsupdate/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Header.tsx         # Logo, search, refresh, dark toggle
-│   │   │   ├── CategoryNav.tsx    # Category pills navigation
-│   │   │   ├── ContentTypeFilter.tsx # News / AI Insights / Trends
+│   │   │   ├── CategoryNav.tsx    # Category pills (Freight Forwarding, Shipping, Logistics, Import & Export)
+│   │   │   ├── ContentTypeFilter.tsx # News / Trends
 │   │   │   ├── FeedCard.tsx       # Feed card with badges & timeago
 │   │   │   ├── SkeletonCard.tsx   # Loading shimmer
 │   │   │   ├── EmptyState.tsx     # Empty state display
-│   │   │   ├── ErrorState.tsx     # Error recovery display
-│   │   │   └── TestModal.tsx      # Browser testing tool for POST /api/feed
+│   │   │   └── ErrorState.tsx     # Error recovery display
 │   │   ├── types/
 │   │   │   └── feed.ts            # Frontend TypeScript types
 │   │   ├── utils/

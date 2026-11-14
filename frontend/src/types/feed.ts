@@ -1,4 +1,4 @@
-export type ContentType = 'news' | 'ai_insight' | 'trend';
+export type ContentType = 'news' | 'trend';
 
 export interface FeedItem {
   id: number;
@@ -9,7 +9,7 @@ export interface FeedItem {
   image_url: string | null;
   category: string | null;
   published_at: string;
-  content_type: ContentType;
+  content_type: ContentType | string;
   created_at?: string;
 }
 
@@ -26,11 +26,7 @@ export interface FeedApiResponse {
 
 export type CategoryOption =
   | 'All'
-  | 'Logistics'
-  | 'Supply Chain'
-  | 'AI & Robotics'
-  | 'Warehousing'
-  | 'Transportation'
+  | 'Freight Forwarding'
   | 'Shipping'
-  | 'India';
-
+  | 'Logistics'
+  | 'Import & Export';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Sparkles, TrendingUp, Clock, Globe } from 'lucide-react';
+import { ExternalLink, TrendingUp, Clock, Globe } from 'lucide-react';
 import { FeedItem } from '../types/feed';
 import { formatRelativeTime, formatFullDate } from '../utils/date';
 
@@ -9,25 +9,22 @@ interface FeedCardProps {
 
 export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
   const [imageError, setImageError] = useState(false);
-  const isAiInsight = item.content_type === 'ai_insight';
   const isTrend = item.content_type === 'trend';
 
-  // Category badge color mapping
+  // Category badge color mapping for core sectors:
+  // 1. Freight Forwarding (blue)
+  // 2. Shipping (cyan)
+  // 3. Logistics (emerald)
+  // 4. Import & Export (amber)
   const getCategoryColor = (category: string | null) => {
     const cat = (category || '').toLowerCase();
-    if (cat.includes('ai') || cat.includes('robot')) {
-      return 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-300 border-violet-200 dark:border-violet-800/50';
-    }
-    if (cat.includes('warehouse')) {
+    if (cat.includes('freight')) {
       return 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800/50';
     }
-    if (cat.includes('ship') || cat.includes('ocean') || cat.includes('maritime')) {
+    if (cat.includes('ship') || cat.includes('ocean') || cat.includes('maritime') || cat.includes('port') || cat.includes('vessel')) {
       return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/70 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/50';
     }
-    if (cat.includes('india')) {
-      return 'bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 border-orange-200 dark:border-orange-800/50';
-    }
-    if (cat.includes('transport') || cat.includes('fleet') || cat.includes('freight')) {
+    if (cat.includes('import') || cat.includes('export') || cat.includes('custom') || cat.includes('tariff') || cat.includes('trade')) {
       return 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border-amber-200 dark:border-amber-800/50';
     }
     return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50';
@@ -36,14 +33,12 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
   return (
     <article
       className={`group relative rounded-2xl p-5 sm:p-6 transition-all duration-200 bg-white dark:bg-slate-900 border ${
-        isAiInsight
-          ? 'border-purple-200/90 dark:border-purple-800/60 shadow-sm hover:shadow-md hover:border-purple-300 dark:hover:border-purple-700'
-          : isTrend
+        isTrend
           ? 'border-amber-200/70 dark:border-amber-800/50 shadow-sm hover:shadow-md hover:border-amber-300 dark:hover:border-amber-700'
           : 'border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700'
       }`}
     >
-      {/* Top Meta Bar: Category + AI Insight / Trend badges */}
+      {/* Top Meta Bar: Category + Trend badge */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           {/* Category Badge */}
@@ -54,14 +49,6 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
           >
             {item.category || 'Logistics'}
           </span>
-
-          {/* AI Insight Visual Accent Badge */}
-          {isAiInsight && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-xs">
-              <Sparkles className="w-3 h-3" />
-              <span>AI Insight</span>
-            </span>
-          )}
 
           {/* Trend Badge */}
           {isTrend && (
