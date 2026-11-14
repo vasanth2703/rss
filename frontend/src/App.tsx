@@ -23,7 +23,7 @@ const CATEGORIES: CategoryOption[] = [
 export const App: React.FC = () => {
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('logipulse_theme');
+    const saved = localStorage.getItem('livenews_theme') || localStorage.getItem('logipulse_theme');
     if (saved) return saved === 'dark';
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
@@ -48,16 +48,17 @@ export const App: React.FC = () => {
   const highestId = feedItems.length > 0 ? Math.max(...feedItems.map((item) => item.id)) : 0;
 
   // Real-time synchronization hook (WebSocket + smart fallback polling)
-  const { hasNewItems, newCount, isConnected, lastCheckedTime, resetNewItems } = useLiveFeedSync(highestId);
+  // Only flags hasNewItems when new output is actually received from n8n pipeline!
+  const { hasNewItems, newCount, isConnected, lastCheckedTime, resetNewItems, baselineId } = useLiveFeedSync(highestId);
 
   // Sync dark mode class on root document
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('logipulse_theme', 'dark');
+      localStorage.setItem('livenews_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('logipulse_theme', 'light');
+      localStorage.setItem('livenews_theme', 'light');
     }
   }, [darkMode]);
 
@@ -226,7 +227,11 @@ export const App: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {feedItems.map((item) => (
-              <FeedCard key={item.id} item={item} />
+              <FeedCard
+                key={item.id}
+                item={item}
+                isNew={baselineId > 0 && item.id > baselineId}
+              />
             ))}
 
             {/* Load More Button */}
@@ -259,9 +264,9 @@ export const App: React.FC = () => {
       <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white/40 dark:bg-slate-900/40 py-8 mt-12 transition-colors">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div>
-            <span className="font-semibold text-slate-700 dark:text-slate-300">LogiPulse Engine</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Live News Testing</span>
             <span className="mx-2">•</span>
-            <span>Automated Logistics &amp; Supply Chain Content Pipeline</span>
+            <span>Automated Freight Forwarding, Shipping, Logistics &amp; Trade Pipeline</span>
           </div>
 
           <div className="flex items-center gap-4">

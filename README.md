@@ -1,8 +1,8 @@
-# LogiPulse 📦⚡
+# Live News Testing 📦⚡
 
-**Production-ready Logistics & Supply Chain News Feed** built with **React**, **Vite**, **Tailwind CSS**, **Cloudflare Workers**, and **Cloudflare D1**.
+**Production-ready Logistics & Freight News Feed** built with **React**, **Vite**, **Tailwind CSS**, **Cloudflare Workers**, and **Cloudflare D1**.
 
-Engineered for testing automated content pipelines (e.g. **n8n**), displaying real-time logistics news, AI insights, and market trends with modern social-media feed aesthetics.
+Engineered for testing automated content pipelines (e.g. **n8n**), displaying real-time freight forwarding, shipping, logistics, and import/export news with modern social-media feed aesthetics.
 
 ---
 
@@ -11,7 +11,7 @@ Engineered for testing automated content pipelines (e.g. **n8n**), displaying re
 ```text
 ┌─────────────────────────────────┐
 │       n8n Automation Engine     │
-│  (RSS / Scrapers / LLM Insights)│
+│  (RSS / Scrapers / Deduplicator)│
 └────────────────┬────────────────┘
                  │ POST /api/feed (JSON)
                  ▼
@@ -26,10 +26,10 @@ Engineered for testing automated content pipelines (e.g. **n8n**), displaying re
 │     Table: feed_items           │
 │     (ID: fba2b323-...)          │
 └────────────────┬────────────────┘
-                 │ Feed JSON (published_at DESC)
+                 │ Feed JSON (id DESC)
                  ▼
 ┌─────────────────────────────────┐
-│   LogiPulse React + Vite UI     │
+│   Live News Testing React UI    │
 │  (Dark Mode • Filters • Search) │
 └─────────────────────────────────┘
 ```

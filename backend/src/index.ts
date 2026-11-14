@@ -60,8 +60,8 @@ export default {
     // Fallback response for root
     return new Response(
       JSON.stringify({
-        name: 'LogiPulse API',
-        description: 'Logistics & Supply Chain News Feed API',
+        name: 'Live News Testing API',
+        description: 'Freight Forwarding, Shipping, Logistics & Import/Export News Feed API',
         version: '1.0.0',
         endpoints: {
           'GET /api/feed': 'List latest feed items (supports ?category, ?limit, ?offset, ?content_type, ?q)',
@@ -88,7 +88,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (path === '/api/health' && request.method === 'GET') {
     return jsonResponse({
       status: 'ok',
-      service: 'LogiPulse API',
+      service: 'Live News Testing API',
       timestamp: new Date().toISOString(),
     });
   }
@@ -247,12 +247,12 @@ async function handleGetFeed(url: URL, env: Env): Promise<Response> {
   const countResult = await (params.length > 0 ? countStmt.bind(...params) : countStmt).first<{ total: number }>();
   const total = countResult?.total || 0;
 
-  // Fetch paginated items ordered by published_at DESC
+  // Fetch paginated items ordered by id DESC (newly ingested articles from n8n display at top)
   const query = `
     SELECT id, title, description, source, source_url, image_url, category, published_at, content_type, created_at
     FROM feed_items
     ${whereSql}
-    ORDER BY datetime(published_at) DESC, id DESC
+    ORDER BY id DESC
     LIMIT ? OFFSET ?
   `;
 

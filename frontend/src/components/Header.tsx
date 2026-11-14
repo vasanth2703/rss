@@ -31,12 +31,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Brand Logo & Subtitle */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-900 to-slate-700 dark:from-emerald-500 dark:to-teal-400 flex items-center justify-center shadow-sm flex-shrink-0 text-white dark:text-slate-950 font-bold">
-              <span className="text-xl tracking-tighter">LP</span>
+              <span className="text-xl tracking-tighter">LN</span>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  Logi<span className="text-emerald-600 dark:text-emerald-400">Pulse</span>
+                  Live News <span className="text-emerald-600 dark:text-emerald-400">Testing</span>
                 </span>
                 <span
                   title={lastCheckedTime ? `Real-time sync active (Last checked: ${lastCheckedTime})` : 'Real-time D1 Sync Active'}

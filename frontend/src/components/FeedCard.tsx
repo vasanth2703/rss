@@ -5,9 +5,10 @@ import { formatRelativeTime, formatFullDate } from '../utils/date';
 
 interface FeedCardProps {
   item: FeedItem;
+  isNew?: boolean;
 }
 
-export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
+export const FeedCard: React.FC<FeedCardProps> = ({ item, isNew = false }) => {
   const [imageError, setImageError] = useState(false);
   const isTrend = item.content_type === 'trend';
 
@@ -33,12 +34,14 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
   return (
     <article
       className={`group relative rounded-2xl p-5 sm:p-6 transition-all duration-200 bg-white dark:bg-slate-900 border ${
-        isTrend
+        isNew
+          ? 'border-emerald-400 dark:border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+          : isTrend
           ? 'border-amber-200/70 dark:border-amber-800/50 shadow-sm hover:shadow-md hover:border-amber-300 dark:hover:border-amber-700'
           : 'border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700'
       }`}
     >
-      {/* Top Meta Bar: Category + Trend badge */}
+      {/* Top Meta Bar: Category + New Badge + Trend badge */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           {/* Category Badge */}
@@ -49,6 +52,13 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item }) => {
           >
             {item.category || 'Logistics'}
           </span>
+
+          {/* Newly Received from n8n Badge */}
+          {isNew && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white shadow-xs animate-pulse">
+              <span>⚡ NEW FROM N8N</span>
+            </span>
+          )}
 
           {/* Trend Badge */}
           {isTrend && (

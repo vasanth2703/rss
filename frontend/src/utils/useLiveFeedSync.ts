@@ -4,25 +4,36 @@ interface LiveSyncState {
   hasNewItems: boolean;
   newCount: number;
   latestIdOnServer: number;
+  baselineId: number;
   isConnected: boolean;
   lastCheckedTime: string;
 }
 
-export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: (count: number) => void) {
+export function useLiveFeedSync(initialFeedHighestId: number = 0, onNewItemsAvailable?: (count: number) => void) {
   const [syncState, setSyncState] = useState<LiveSyncState>({
     hasNewItems: false,
     newCount: 0,
-    latestIdOnServer: currentHighestId,
+    latestIdOnServer: initialFeedHighestId,
+    baselineId: initialFeedHighestId,
     isConnected: false,
     lastCheckedTime: 'just now',
   });
 
   const wsRef = useRef<WebSocket | null>(null);
-  const highestIdRef = useRef<number>(currentHighestId);
+  const baselineIdRef = useRef<number>(initialFeedHighestId);
+  const isInitializedRef = useRef<boolean>(false);
 
+  // If initialFeedHighestId arrives from initial feed load before first sync check, establish baseline
   useEffect(() => {
-    highestIdRef.current = currentHighestId;
-  }, [currentHighestId]);
+    if (initialFeedHighestId > 0 && (!isInitializedRef.current || baselineIdRef.current === 0)) {
+      baselineIdRef.current = Math.max(baselineIdRef.current, initialFeedHighestId);
+      setSyncState((prev) => ({
+        ...prev,
+        baselineId: baselineIdRef.current,
+        latestIdOnServer: Math.max(prev.latestIdOnServer, initialFeedHighestId),
+      }));
+    }
+  }, [initialFeedHighestId]);
 
   // Check server for latest item ID
   const checkLatestId = useCallback(async () => {
@@ -32,23 +43,41 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
       });
       if (response.ok) {
         const data = await response.json();
-        const serverMaxId = data.latest_id || 0;
-        const currentId = highestIdRef.current;
+        const serverMaxId = Number(data.latest_id || 0);
+        const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        setSyncState((prev) => {
-          const diff = serverMaxId > currentId ? serverMaxId - currentId : 0;
-          return {
-            ...prev,
-            isConnected: true,
+        if (!isInitializedRef.current) {
+          // First check establishes baseline!
+          // Strictly prevent "new data received" on initial page load
+          isInitializedRef.current = true;
+          const baseline = Math.max(serverMaxId, baselineIdRef.current);
+          baselineIdRef.current = baseline;
+          setSyncState({
+            hasNewItems: false,
+            newCount: 0,
             latestIdOnServer: serverMaxId,
-            hasNewItems: diff > 0,
-            newCount: diff,
-            lastCheckedTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          };
-        });
+            baselineId: baseline,
+            isConnected: true,
+            lastCheckedTime: currentTime,
+          });
+          return;
+        }
 
-        if (serverMaxId > currentId && onNewItemsAvailable) {
-          onNewItemsAvailable(serverMaxId - currentId);
+        // Subsequent checks: ONLY show "new data received" if n8n has written NEW articles (serverMaxId > baseline)
+        const baseline = baselineIdRef.current;
+        const diff = serverMaxId > baseline ? serverMaxId - baseline : 0;
+
+        setSyncState((prev) => ({
+          ...prev,
+          isConnected: true,
+          latestIdOnServer: serverMaxId,
+          hasNewItems: diff > 0,
+          newCount: diff,
+          lastCheckedTime: currentTime,
+        }));
+
+        if (diff > 0 && onNewItemsAvailable) {
+          onNewItemsAvailable(diff);
         }
       }
     } catch {
@@ -71,7 +100,6 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
         ws.onopen = () => {
           if (!isMounted) return;
           setSyncState((prev) => ({ ...prev, isConnected: true }));
-          // Check right after connecting
           ws.send(JSON.stringify({ type: 'ping' }));
         };
 
@@ -79,18 +107,39 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
           if (!isMounted) return;
           try {
             const data = JSON.parse(event.data);
-            if (data.latest_id) {
-              const serverMaxId = data.latest_id;
-              const currentId = highestIdRef.current;
-              const diff = serverMaxId > currentId ? serverMaxId - currentId : 0;
+            if (data.latest_id !== undefined) {
+              const serverMaxId = Number(data.latest_id || 0);
+              const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+              if (!isInitializedRef.current) {
+                isInitializedRef.current = true;
+                const baseline = Math.max(serverMaxId, baselineIdRef.current);
+                baselineIdRef.current = baseline;
+                setSyncState({
+                  hasNewItems: false,
+                  newCount: 0,
+                  latestIdOnServer: serverMaxId,
+                  baselineId: baseline,
+                  isConnected: true,
+                  lastCheckedTime: currentTime,
+                });
+                return;
+              }
+
+              const baseline = baselineIdRef.current;
+              const diff = serverMaxId > baseline ? serverMaxId - baseline : 0;
 
               setSyncState((prev) => ({
                 ...prev,
                 latestIdOnServer: serverMaxId,
                 hasNewItems: diff > 0,
                 newCount: diff,
-                lastCheckedTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                lastCheckedTime: currentTime,
               }));
+
+              if (diff > 0 && onNewItemsAvailable) {
+                onNewItemsAvailable(diff);
+              }
             }
           } catch {
             // ignore non-json
@@ -98,15 +147,11 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
         };
 
         ws.onclose = () => {
-          if (isMounted) {
-            setSyncState((prev) => ({ ...prev, isConnected: false }));
-          }
+          if (isMounted) setSyncState((prev) => ({ ...prev, isConnected: false }));
         };
 
         ws.onerror = () => {
-          if (isMounted) {
-            setSyncState((prev) => ({ ...prev, isConnected: false }));
-          }
+          if (isMounted) setSyncState((prev) => ({ ...prev, isConnected: false }));
         };
       } catch {
         // Fallback silently
@@ -115,7 +160,10 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
 
     connectWebSocket();
 
-    // Secondary auto-polling every 15 seconds to ensure fast updates under any network conditions
+    // Check immediately on mount
+    checkLatestId();
+
+    // Secondary auto-polling every 10 seconds to catch n8n output reliably
     pollInterval = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         try {
@@ -126,7 +174,7 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
       } else {
         checkLatestId();
       }
-    }, 15000);
+    }, 10000);
 
     return () => {
       isMounted = false;
@@ -135,14 +183,21 @@ export function useLiveFeedSync(currentHighestId: number, onNewItemsAvailable?: 
         wsRef.current.close();
       }
     };
-  }, [checkLatestId]);
+  }, [checkLatestId, onNewItemsAvailable]);
 
-  const resetNewItems = useCallback(() => {
-    setSyncState((prev) => ({
-      ...prev,
-      hasNewItems: false,
-      newCount: 0,
-    }));
+  // Reset after user clicks "view new data"
+  const resetNewItems = useCallback((newBaseline?: number) => {
+    setSyncState((prev) => {
+      const targetBaseline = newBaseline !== undefined ? newBaseline : prev.latestIdOnServer;
+      baselineIdRef.current = targetBaseline;
+      isInitializedRef.current = true;
+      return {
+        ...prev,
+        hasNewItems: false,
+        newCount: 0,
+        baselineId: targetBaseline,
+      };
+    });
   }, []);
 
   return {
