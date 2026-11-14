@@ -8,7 +8,7 @@
     "backend"
   ],
   "scripts": {
-    "dev:worker": "wrangler dev --port 8787",
+    "dev:worker": "wrangler dev --port 8787 --ip 0.0.0.0",
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev": "npm run dev --workspace=frontend",
     "build": "npm --prefix frontend install --include=dev && npm run build --prefix frontend",

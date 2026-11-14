@@ -38,7 +38,7 @@
           "string": [
             {
               "name": "apiUrl",
-              "value": "http://127.0.0.1:8787/api/feed"
+              "value": "http://host.docker.internal:8787/api/feed"
             }
           ],
           "number": [
