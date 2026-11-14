@@ -24,9 +24,4 @@ export interface FeedApiResponse {
   message?: string;
 }
 
-export type CategoryOption =
-  | 'All'
-  | 'Freight Forwarding'
-  | 'Shipping'
-  | 'Logistics'
-  | 'Import & Export';
+export type CategoryOption = 'All' | 'Shipping' | 'Logistics';

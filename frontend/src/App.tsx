@@ -14,10 +14,8 @@ import { Database, Zap, ArrowDownCircle } from 'lucide-react';
 
 const CATEGORIES: CategoryOption[] = [
   'All',
-  'Freight Forwarding',
   'Shipping',
   'Logistics',
-  'Import & Export',
 ];
 
 export const App: React.FC = () => {

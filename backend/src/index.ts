@@ -221,9 +221,15 @@ async function handleGetFeed(url: URL, env: Env): Promise<Response> {
 
   // Filter by category if provided and not "all"
   if (categoryParam && categoryParam.toLowerCase() !== 'all') {
-    // Support exact match or substring match (e.g. "robotics" matches "AI & Robotics")
-    whereClauses.push('(LOWER(category) = LOWER(?) OR LOWER(category) LIKE ?)');
-    params.push(categoryParam, `%${categoryParam.toLowerCase()}%`);
+    const cat = categoryParam.toLowerCase();
+    if (cat === 'shipping') {
+      whereClauses.push("(LOWER(category) = 'shipping' OR LOWER(category) LIKE '%shipping%' OR LOWER(category) LIKE '%maritime%' OR LOWER(category) LIKE '%ocean%' OR LOWER(category) LIKE '%port%')");
+    } else if (cat === 'logistics') {
+      whereClauses.push("(LOWER(category) = 'logistics' OR LOWER(category) LIKE '%logistics%' OR LOWER(category) LIKE '%freight%' OR LOWER(category) LIKE '%trade%' OR LOWER(category) LIKE '%import%' OR LOWER(category) LIKE '%export%' OR LOWER(category) LIKE '%warehouse%' OR LOWER(category) LIKE '%supply%')");
+    } else {
+      whereClauses.push('(LOWER(category) = LOWER(?) OR LOWER(category) LIKE ?)');
+      params.push(categoryParam, `%${cat}%`);
+    }
   }
 
   // Filter by content_type if provided and valid
