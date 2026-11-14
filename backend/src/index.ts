@@ -180,7 +180,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     if (request.method === 'GET') {
       return handleGetFeed(url, env);
     } else if (request.method === 'POST') {
-      return handlePostFeed(request, env);
+      return handlePostFeed(request, env, url);
     } else {
       return jsonResponse({ success: false, error: 'Method Not Allowed' }, 405);
     }
@@ -284,7 +284,7 @@ async function handleGetFeed(url: URL, env: Env): Promise<Response> {
  *   content_type?: "news" | "ai_insight" | "trend" (defaults to "news")
  * }
  */
-async function handlePostFeed(request: Request, env: Env): Promise<Response> {
+async function handlePostFeed(request: Request, env: Env, url: URL): Promise<Response> {
   let body: CreateFeedItemInput;
   try {
     body = await request.json();
@@ -347,15 +347,20 @@ async function handlePostFeed(request: Request, env: Env): Promise<Response> {
     .first<{ id: number; title: string; published_at: string }>();
 
   if (existing) {
+    // If strict mode requested, return 409 Conflict. Otherwise return 200 with duplicate: true so automated pipelines succeed cleanly.
+    const strictMode = url.searchParams.get('strict') === 'true';
+    const status = strictMode ? 409 : 200;
+
     return jsonResponse(
       {
-        success: false,
-        error: 'Duplicate article',
+        success: !strictMode,
+        status: 'duplicate_skipped',
+        duplicate: true,
         message: `An article with this source_url already exists (ID: ${existing.id})`,
         existing_id: existing.id,
         existing_title: existing.title,
       },
-      409 // HTTP 409 Conflict
+      status
     );
   }
 

@@ -91,11 +91,12 @@
       "position": [
         260,
         40
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Ingestion Run Summary\nconst items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const statusCode = item.json.statusCode || item.json.status || 0;\n  if (statusCode === 201) {\n    inserted++;\n  } else if (statusCode === 409) {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    status: errors === 0 ? 'success' : (inserted > 0 ? 'partial_success' : 'completed')\n  }\n}];"
+        "jsCode": "// Ingestion Run Summary\nconst items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const j = item.json;\n  const statusCode = j.statusCode || j.status || 0;\n  if (statusCode === 201 || j.id && !j.duplicate) {\n    inserted++;\n  } else if (statusCode === 409 || j.duplicate || j.status === 'duplicate_skipped') {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    status: errors === 0 ? 'success' : 'completed'\n  }\n}];"
       },
       "id": "893c0291-72da-4f11-9a75-b82736159c34",
       "name": "Ingestion Summary",
