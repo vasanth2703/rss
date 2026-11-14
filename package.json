@@ -1,0 +1,21 @@
+{
+  "name": "logipulse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LogiPulse - Production-ready Logistics & Supply Chain News Feed powered by Cloudflare Workers and D1",
+  "scripts": {
+    "dev:worker": "wrangler dev --port 8787",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev": "npm run dev:frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "d1:migrate:local": "wrangler d1 execute logipulse-db --local --file=./migrations/0001_initial_schema.sql",
+    "d1:seed:local": "wrangler d1 execute logipulse-db --local --file=./migrations/seed.sql",
+    "d1:migrate:remote": "wrangler d1 execute logipulse-db --remote --file=./migrations/0001_initial_schema.sql",
+    "d1:seed:remote": "wrangler d1 execute logipulse-db --remote --file=./migrations/seed.sql",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0 || ^4.0.0"
+  }
+}
