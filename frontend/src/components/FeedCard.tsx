@@ -10,6 +10,7 @@ interface FeedCardProps {
 
 export const FeedCard: React.FC<FeedCardProps> = ({ item, isNew = false }) => {
   const [imageError, setImageError] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const isTrend = item.content_type === 'trend';
 
   // Category badge color mapping for core sectors:
@@ -94,11 +95,26 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item, isNew = false }) => {
             </a>
           </h2>
 
-          {/* Short Description */}
+          {/* Description Content - Expanded to 6 lines with Read More toggle */}
           {item.description && (
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3 mb-4 font-normal">
-              {item.description}
-            </p>
+            <div className="mb-4">
+              <p
+                className={`text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-normal transition-all duration-200 ${
+                  isExpanded ? '' : 'line-clamp-6'
+                }`}
+              >
+                {item.description}
+              </p>
+              {item.description.length > 200 && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline inline-flex items-center gap-0.5 focus:outline-none cursor-pointer"
+                >
+                  {isExpanded ? 'Show less' : 'Read more...'}
+                </button>
+              )}
+            </div>
           )}
 
           {/* Footer Metadata & Read Source Button */}
@@ -124,7 +140,7 @@ export const FeedCard: React.FC<FeedCardProps> = ({ item, isNew = false }) => {
 
         {/* Optional Article Image */}
         {item.image_url && !imageError && (
-          <div className="w-full sm:w-44 h-40 sm:h-32 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 relative">
+          <div className="w-full sm:w-48 h-44 sm:h-36 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 relative">
             <img
               src={item.image_url}
               alt={item.title}
