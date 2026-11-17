@@ -55,35 +55,134 @@ function getArticleImage(item: FeedItem): string {
   return DIVERSE_IMAGES[hash % DIVERSE_IMAGES.length];
 }
 
-function getDisplayDescription(item: FeedItem): string {
-  const raw = (item.description || '').trim();
-  const cleanTitle = (item.title || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-  const cleanDesc = raw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+function cleanHeadline(title: string): string {
+  let text = (title || '').trim();
+  // Strip trailing publisher suffix like " - Autocar Professional" or " | Reuters"
+  if (text.includes(' - ')) {
+    const parts = text.split(' - ');
+    parts.pop();
+    text = parts.join(' - ').trim();
+  }
+  if (text.includes(' | ')) {
+    const parts = text.split(' | ');
+    parts.pop();
+    text = parts.join(' | ').trim();
+  }
+  return text;
+}
 
-  // Check if description is missing or is just a title repetition from Google News RSS
-  const isRedundant = !raw || cleanDesc === cleanTitle || cleanDesc.startsWith(cleanTitle) || raw.length < 90;
+// Check if description is either empty, redundant with title, or an old boilerplate string
+function isRedundantOrBoilerplate(raw: string, title: string): boolean {
+  if (!raw) return true;
+  const cleanRaw = raw.trim();
+  if (cleanRaw.length < 80) return true;
 
-  if (isRedundant) {
-    const combined = `${item.title} ${raw}`.toLowerCase();
-    if (/(port|terminal|scan|cochin|dock|berth|customs|custom|quay|harbor)/.test(combined)) {
-      return `${item.title}. Industry trade bodies and maritime stakeholders are actively engaging port and customs authorities to streamline scanning protocols, reduce gate-in dwell times, and avoid severe demurrage fee escalations for containerized freight.`;
-    }
-    if (/(air freight|air cargo|cargo flight|belly hold|aviation|airport|flight)/.test(combined)) {
-      return `${item.title}. Air cargo operators on major transpacific and Asia-Europe trade lanes report changing belly-hold capacity allocations, fuel surcharges, and charter rates heading into peak shipping schedules.`;
-    }
-    if (/(agreement|treaty|tariff|trade agreement|fta|bilateral|partnership|cross border|pact)/.test(combined)) {
-      return `${item.title}. Strategic trade and cross-border logistics framework designed to streamline customs clearance documentation, harmonize bilateral tariff schedules, and expand dedicated multimodal transit capacity.`;
-    }
-    if (/(shares|invest|director|sells|stocks|nasdaq|quarterly|earnings|financial|revenue|acquisition)/.test(combined)) {
-      return `${item.title}. Corporate financial disclosure and market movement. Financial analysts track fleet expansion investments, capital expenditure, and operating margins across shifting global freight rate environments.`;
-    }
-    if (item.category === 'Shipping' || /(ship|ocean|vessel|maritime|container ship|carrier|bulk|tanker|red sea|suez)/.test(combined)) {
-      return `${item.title}. Ocean freight operational update analyzing vessel transit reliability, container repositioning, spot rate indices, and carrier schedule adjustments across major global trade loops.`;
-    }
-    return `${item.title}. Comprehensive logistics and supply chain intelligence covering inventory velocity, distribution facility optimization, multimodal freight management, and end-to-end transport tracking.`;
+  // Check if it's the old repetitive boilerplate
+  if (
+    cleanRaw.includes('Industry trade bodies and maritime stakeholders') ||
+    cleanRaw.includes('Comprehensive logistics and supply chain intelligence covering inventory velocity') ||
+    cleanRaw.includes('Ocean freight operational update analyzing vessel transit reliability') ||
+    cleanRaw.includes('Corporate financial disclosure and market movement') ||
+    cleanRaw.includes('Air cargo operators on major transpacific') ||
+    cleanRaw.includes('Strategic trade and cross-border logistics framework')
+  ) {
+    return true;
   }
 
-  return raw;
+  const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normDesc = cleanRaw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  return normDesc === normTitle || normDesc.startsWith(normTitle) || normTitle.startsWith(normDesc);
+}
+
+function getDisplayDescription(item: FeedItem): string {
+  const raw = (item.description || '').trim();
+  const headline = cleanHeadline(item.title);
+
+  // If already a genuine, substantive article summary that isn't an old boilerplate, keep it!
+  if (!isRedundantOrBoilerplate(raw, item.title)) {
+    return raw;
+  }
+
+  const sourceName = item.source?.trim() || 'industry sources';
+  const combined = `${item.title} ${item.category || ''}`.toLowerCase();
+  const hash = Math.abs((item.id || 1) * 37 + headline.length * 11);
+
+  // 1. Executive / Leadership / Board appointments
+  if (/\b(ceo|cfo|md|appointed|appoints|resigns|stepping down|step down|executive|leadership|director|board)\b/i.test(combined)) {
+    const variants = [
+      `Executive leadership transition reported by ${sourceName}: ${headline}. Market observers and supply chain leaders monitor senior management succession, strategic corporate restructuring, and ongoing capital deployment across operating divisions.`,
+      `Corporate transition reported by ${sourceName}: ${headline}. Industry stakeholders analyze leadership realignment and operational strategy as logistics networks navigate evolving customer demand and service contracts.`,
+      `Management restructuring development via ${sourceName}: ${headline}. The executive appointment highlights corporate focus on organizational governance, fleet agility, and scalable multimodal freight services.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 2. Ocean Shipping, Vessels, Fleets, Sea Lanes
+  if (/\b(ocean|maritime|vessels?|ships?|shipping|tankers?|carriers?|boxships?|dry bulk|red sea|suez|strait of hormuz|liner)\b/i.test(combined)) {
+    const variants = [
+      `Maritime transport and commercial navigation briefing reported via ${sourceName}: ${headline}. Carrier operations teams track vessel scheduling reliability, bunker fuel surcharges, container equipment repositioning, and transit safety protocols across active ocean loops.`,
+      `Ocean shipping operational intelligence via ${sourceName}: ${headline}. Global shipping alliances and maritime stakeholders evaluate spot freight index fluctuations, voyage route optimization, and sea lane capacity balances.`,
+      `Commercial fleet development reported by ${sourceName}: ${headline}. Maritime logistics analysts assess vessel charter fixtures, environmental emissions compliance, and strategic deployment across international deep-sea lanes.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 3. Port Terminals, Quays, Docks, Berths, Gate-In Dwell
+  if (/\b(ports?|terminals?|berths?|docks?|quays?|harbors?|demurrage|gateway|stevedoring)\b/i.test(combined)) {
+    const variants = [
+      `Port infrastructure and terminal throughput update via ${sourceName}: ${headline}. Port authorities and terminal operators collaborate on gate turnaround velocity, crane productivity benchmarks, and container yard fluidity to minimize dwell congestion.`,
+      `Harbor operations and maritime gateway briefing reported by ${sourceName}: ${headline}. Regional drayage carriers and maritime stakeholders evaluate quay availability, cargo scanning procedures, and demurrage mitigation initiatives.`,
+      `Terminal logistics and marine facility development reported via ${sourceName}: ${headline}. Infrastructure planners assess deep-water berth expansion, automated container handling equipment, and intermodal on-dock rail connectivity.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 4. Cross-Border Trade, Customs Clearance, Tariffs, Bilateral Accords
+  if (/\b(agreements?|accords?|pacts?|partnerships?|treaty|treaties|bilateral|exports?|imports?|tariffs?|customs?\b|trade\s*agreement|fta|cross[- ]border|commerce|duties)\b/i.test(combined)) {
+    const variants = [
+      `Cross-border trade and regulatory policy analysis via ${sourceName}: ${headline}. International trade analysts examine bilateral customs documentation standards, tariff schedule harmonization, and multilateral freight clearance workflows.`,
+      `International trade and commerce briefing reported by ${sourceName}: ${headline}. Freight forwarders and global shippers monitor export-import balance shifts, regulatory compliance directives, and preferential trade corridor agreements.`,
+      `Global customs and cargo flow report via ${sourceName}: ${headline}. Industry stakeholders track trade lane pricing, customs audit requirements, and digital cargo declaration mechanisms across primary trading partner routes.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 5. Air Freight, Cargo Flights, Airport Logistics
+  if (/\b(air\s*freight|air\s*cargo|aviation|airports?|belly[- ]hold|cargo flights?|charters?)\b/i.test(combined)) {
+    const variants = [
+      `Air freight and aviation cargo briefing via ${sourceName}: ${headline}. Air forwarders and airline cargo divisions monitor belly-hold capacity allocations, jet fuel index surcharges, and express delivery transit commitments across transatlantic and transpacific hubs.`,
+      `Aviation logistics operational report reported by ${sourceName}: ${headline}. Global freight forwarders evaluate international charter flight demand, airport cold-storage handling capacity, and time-critical supply chain corridors.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 6. Surface Freight, Rail, Intermodal & Warehousing
+  if (/\b(freight|shipments?|trucks?|trucking|freight\s*rates?|rail|intermodal|trains?|highways?|warehouses?|cold\s*chain|drayage|linehaul|logistics\s*index)\b/i.test(combined)) {
+    const variants = [
+      `Inland surface freight and intermodal distribution report via ${sourceName}: ${headline}. Transport economists analyze regional linehaul capacity, drayage driver availability, diesel cost pressures, and warehouse storage utilization rates.`,
+      `Domestic freight and logistics operations briefing reported by ${sourceName}: ${headline}. Supply chain planners assess intermodal rail transit schedules, automated order fulfillment centers, and distribution hub inventory velocity.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 7. Corporate Finance, Earnings, M&A, Equity Markets
+  if (/\b(shares?|stocks?|investors?|earnings|quarterly|revenues?|acquisition|mergers?|valuation|stake|dividend|profit)\b/i.test(combined)) {
+    const variants = [
+      `Market intelligence and financial disclosure reported via ${sourceName}: ${headline}. Equity analysts and institutional logistics investors evaluate capital expenditures, operating margins, and balance sheet resilience amidst changing market cycles.`,
+      `Corporate financial development reported by ${sourceName}: ${headline}. Financial observers track asset acquisition strategies, enterprise EBITDA performance, and fleet modernization funding across the commercial transport sector.`
+    ];
+    return variants[hash % variants.length];
+  }
+
+  // 8. General Supply Chain & Multimodal Logistics (Rotating 4 distinct styles by item.id)
+  const generalVariants = [
+    `Comprehensive supply chain briefing reported via ${sourceName}: ${headline}. Multimodal transport providers track network connectivity, inventory optimization strategies, and customer service delivery across diversified trade corridors.`,
+    `Logistics intelligence update from ${sourceName}: ${headline}. Transport planners evaluate end-to-end cargo visibility, supply chain technology integration, and operational resilience across domestic and international routing networks.`,
+    `Industry operational briefing via ${sourceName}: ${headline}. Shippers and freight intermediaries analyze market capacity trends, vendor performance metrics, and tactical freight execution across regional and global trade routes.`,
+    `Logistics market development reported by ${sourceName}: ${headline}. Transport strategists review distribution efficiency benchmarks, contractual freight agreements, and digital workflow transformation across enterprise supply chains.`
+  ];
+  return generalVariants[hash % generalVariants.length];
 }
 
 interface FeedCardProps {
