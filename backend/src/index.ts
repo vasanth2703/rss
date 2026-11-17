@@ -189,6 +189,85 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   return jsonResponse({ success: false, error: 'Endpoint Not Found' }, 404);
 }
 
+// 23 distinct high-resolution logistics, maritime, air cargo & freight images
+const DIVERSE_IMAGES = [
+  'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=800&q=80', // ocean container ship
+  'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80', // air cargo pallet
+  'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=800&q=80', // port gantry cranes
+  'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=800&q=80', // modern warehouse
+  'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=800&q=80', // freight truck fleet
+  'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=800&q=80', // intermodal freight train
+  'https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=800&q=80', // vessel at open sea
+  'https://images.unsplash.com/photo-1570710891163-6d3b5c47248b?auto=format&fit=crop&w=800&q=80', // cargo aircraft tarmac
+  'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=800&q=80', // terminal container stacks
+  'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=800&q=80', // automated logistics center
+  'https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=800&q=80', // highway delivery trucks
+  'https://images.unsplash.com/photo-1541427468627-a89a96e5ca1d?auto=format&fit=crop&w=800&q=80', // rail container yard
+  'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=800&q=80', // cargo vessel sunset
+  'https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=800&q=80', // global freight terminal
+  'https://images.unsplash.com/photo-1524522173746-f628baad3644?auto=format&fit=crop&w=800&q=80', // harbor container docks
+  'https://images.unsplash.com/photo-1580674285054-bed31e145f59?auto=format&fit=crop&w=800&q=80', // high bay warehouse racks
+  'https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=800&q=80', // deep-water shipping port
+  'https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=800&q=80', // smart robotics distribution
+  'https://images.unsplash.com/photo-1505705694340-019e1e335916?auto=format&fit=crop&w=800&q=80', // bulk carrier vessel
+  'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=800&q=80', // commercial air cargo jet
+  'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80', // international logistics trade
+  'https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=800&q=80', // logistics contract & partnership
+  'https://images.unsplash.com/photo-1586528116493-a029325540fa?auto=format&fit=crop&w=800&q=80', // container freight logistics
+];
+
+const REPETITIVE_URL_PATTERNS = [
+  'photo-1519003722824',
+  'photo-1542314831',
+  'photo-1586528116311',
+  'photo-1474487548417',
+  'photo-1578575437130',
+  'photo-1601584115197',
+];
+
+function isRepetitiveFallback(url: string | null): boolean {
+  if (!url) return true;
+  return REPETITIVE_URL_PATTERNS.some((pat) => url.includes(pat));
+}
+
+function enrichArticleImage(item: FeedItem): string {
+  if (item.image_url && !isRepetitiveFallback(item.image_url)) {
+    return item.image_url;
+  }
+  const hash = Math.abs((item.id || 1) * 31 + (item.title ? item.title.length * 7 : 0));
+  return DIVERSE_IMAGES[hash % DIVERSE_IMAGES.length];
+}
+
+function enrichArticleDescription(item: FeedItem): string {
+  const raw = (item.description || '').trim();
+  const cleanTitle = (item.title || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const cleanDesc = raw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const isRedundant = !raw || cleanDesc === cleanTitle || cleanDesc.startsWith(cleanTitle) || raw.length < 90;
+
+  if (isRedundant) {
+    const combined = `${item.title} ${raw}`.toLowerCase();
+    if (/(port|terminal|scan|cochin|dock|berth|customs|custom|quay|harbor)/.test(combined)) {
+      return `${item.title}. Industry trade bodies and maritime stakeholders are actively engaging port and customs authorities to streamline scanning protocols, reduce gate-in dwell times, and avoid severe demurrage fee escalations for containerized freight.`;
+    }
+    if (/(air freight|air cargo|cargo flight|belly hold|aviation|airport|flight)/.test(combined)) {
+      return `${item.title}. Air cargo operators on major transpacific and Asia-Europe trade lanes report changing belly-hold capacity allocations, fuel surcharges, and charter rates heading into peak shipping schedules.`;
+    }
+    if (/(agreement|treaty|tariff|trade agreement|fta|bilateral|partnership|cross border|pact)/.test(combined)) {
+      return `${item.title}. Strategic trade and cross-border logistics framework designed to streamline customs clearance documentation, harmonize bilateral tariff schedules, and expand dedicated multimodal transit capacity.`;
+    }
+    if (/(shares|invest|director|sells|stocks|nasdaq|quarterly|earnings|financial|revenue|acquisition)/.test(combined)) {
+      return `${item.title}. Corporate financial disclosure and market movement. Financial analysts track fleet expansion investments, capital expenditure, and operating margins across shifting global freight rate environments.`;
+    }
+    if (item.category === 'Shipping' || /(ship|ocean|vessel|maritime|container ship|carrier|bulk|tanker|red sea|suez)/.test(combined)) {
+      return `${item.title}. Ocean freight operational update analyzing vessel transit reliability, container repositioning, spot rate indices, and carrier schedule adjustments across major global trade loops.`;
+    }
+    return `${item.title}. Comprehensive logistics and supply chain intelligence covering inventory velocity, distribution facility optimization, multimodal freight management, and end-to-end transport tracking.`;
+  }
+
+  return raw;
+}
+
 /**
  * GET /api/feed
  * Query parameters:
@@ -265,14 +344,20 @@ async function handleGetFeed(url: URL, env: Env): Promise<Response> {
   const queryParams = [...params, limit, offset];
   const itemsResult = await env.DB.prepare(query).bind(...queryParams).all<FeedItem>();
 
+  const enrichedResults = itemsResult.results.map((item) => ({
+    ...item,
+    image_url: enrichArticleImage(item),
+    description: enrichArticleDescription(item),
+  }));
+
   return jsonResponse({
     success: true,
-    count: itemsResult.results.length,
+    count: enrichedResults.length,
     total,
     limit,
     offset,
-    data: itemsResult.results,
-    items: itemsResult.results, // For convenience
+    data: enrichedResults,
+    items: enrichedResults, // For convenience
   });
 }
 
@@ -371,8 +456,8 @@ async function handlePostFeed(request: Request, env: Env, url: URL): Promise<Res
   }
 
   // Normalize and sanitize values
-  const description = body.description?.trim() || null;
-  const image_url = body.image_url?.trim() || null;
+  let description = body.description?.trim() || null;
+  let image_url = body.image_url?.trim() || null;
   const category = body.category?.trim() || 'Logistics';
 
   // Normalize source - if omitted, extract domain from source_url
@@ -385,6 +470,22 @@ async function handlePostFeed(request: Request, env: Env, url: URL): Promise<Res
       source = 'Industry Source';
     }
   }
+
+  // Enrich image and description if missing or repetitive
+  const seedItem: FeedItem = {
+    id: Date.now(),
+    title,
+    description,
+    source,
+    source_url,
+    image_url,
+    category,
+    published_at: new Date().toISOString(),
+    content_type: 'news',
+    created_at: new Date().toISOString(),
+  };
+  image_url = enrichArticleImage(seedItem);
+  description = enrichArticleDescription(seedItem);
 
   // Normalize published_at
   let published_at = body.published_at?.trim() || null;
