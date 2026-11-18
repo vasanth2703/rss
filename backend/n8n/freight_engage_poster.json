@@ -95,6 +95,12 @@
         "url": "={{ $json.image_url }}",
         "responseFormat": "file",
         "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
           "timeout": 30000
         }
       },
