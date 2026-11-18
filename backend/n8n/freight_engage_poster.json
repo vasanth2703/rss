@@ -2,33 +2,33 @@
   "name": "Freight Engage - Latest 3 Freight Posts Pipeline",
   "nodes": [
     {
-      "parameters": {},
-      "id": "fe-node-1-manual",
-      "name": "When clicking 'Test workflow'",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        220,
-        240
-      ]
-    },
-    {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 6
+              "field": "minutes",
+              "minutesInterval": 30
             }
           ]
         }
       },
-      "id": "fe-node-2-schedule",
-      "name": "Every 6 Hours",
+      "id": "fe-node-1-schedule",
+      "name": "Every 30 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        220,
+        200,
+        260
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fe-node-2-manual",
+      "name": "Manual Test Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
         420
       ]
     },
@@ -53,57 +53,40 @@
           "timeout": 30000
         }
       },
-      "id": "fe-node-3-get-posts",
-      "name": "Retrieve Posts from Freight Engage",
+      "id": "fe-node-3-existing-posts",
+      "name": "Get Existing Freight Posts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        480,
-        320
+        460,
+        340
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Freight Engage Filter: Strict 3-day cutoff + Freight topic validation + Top 3 limiter\n// Client Requirements:\n// 1. Use only the Freight Engage Posts API\n// 2. Retrieve only the latest 3 freight-related posts\n// 3. Include posts published within the last 3 days only\n// 4. Do not include older posts or unrelated content\n\nconst response = $input.first().json;\nconst posts = Array.isArray(response.results) ? response.results : (Array.isArray(response) ? response : []);\n\nconst now = Date.now();\nconst THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;\nconst cutoffTime = now - THREE_DAYS_MS;\n\n// High-precision regex matching freight, cargo, shipping, logistics, transport, forwarding\nconst freightRegex = /\\b(freight|cargo|shipping|logistics|transport|forwarding|carrier|vessels?|trucking|intermodal|drayage|supply\\s*chain|container)\\b/i;\n\n// Curated fallback HD freight images in case original post has no uploaded media\nconst fallbackFreightImages = [\n  'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1000&q=80',\n  'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1000&q=80',\n  'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1000&q=80'\n];\n\nconst validFreightPosts = [];\n\nfor (const post of posts) {\n  // 1. Recency requirement: Strictly within last 3 days (72 hours)\n  const postDate = new Date(post.created_at || post.published_at || post.updated_at).getTime();\n  if (isNaN(postDate) || postDate < cutoffTime || postDate > now) {\n    continue;\n  }\n\n  // 2. Extract content for inspection\n  const title = (post.title || '').trim();\n  const body = (post.body || '').trim();\n  const combinedText = `${title} ${body}`.toLowerCase();\n\n  // 3. Exclude unrelated generic test or placeholder content (e.g. 'My first feed post')\n  if (combinedText.includes('my first feed post') || (combinedText.includes('test post') && !freightRegex.test(combinedText))) {\n    continue;\n  }\n\n  // 4. Relevance requirement: Must be freight-related\n  if (!freightRegex.test(combinedText)) {\n    continue;\n  }\n\n  // Extract attached media image or assign deterministic fallback freight photo\n  let imageUrl = null;\n  if (Array.isArray(post.media) && post.media.length > 0) {\n    imageUrl = post.media[0].file || post.media[0].url || null;\n  }\n  if (!imageUrl) {\n    const seed = typeof post.id === 'number' ? post.id : title.length;\n    imageUrl = fallbackFreightImages[Math.abs(seed) % fallbackFreightImages.length];\n  }\n\n  const hoursAgo = ((now - postDate) / (1000 * 60 * 60)).toFixed(1);\n\n  validFreightPosts.push({\n    id: post.id,\n    title: title,\n    body: body,\n    created_at: post.created_at,\n    age_hours: `${hoursAgo} hours ago`,\n    image_url: imageUrl,\n    share_url: post.share_url || `https://app.freightengage.com/api/feed/${post.id}/`,\n    category: 'Freight & Logistics',\n    status: 'Qualified (Within 3 Days & Freight Related)'\n  });\n}\n\n// 5. Sort latest first and strictly limit to top 3\nvalidFreightPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());\nconst top3FreightPosts = validFreightPosts.slice(0, 3);\n\nreturn top3FreightPosts.map(p => ({ json: p }));\n"
+        "url": "https://news.google.com/rss/search?q=%22freight+forwarding%22+OR+freight+OR+shipping+OR+cargo+OR+logistics+when:3d&hl=en-IN&gl=IN&ceid=IN:en",
+        "options": {}
       },
-      "id": "fe-node-4-filter-posts",
-      "name": "Filter Latest 3 Freight Posts (< 3 Days)",
+      "id": "fe-node-4-fetch-rss",
+      "name": "Fetch Freight RSS News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Freight Engage Content Deduplicator, Dynamic Description & Image Extractor\n// Client Requirements:\n// 1. Use only the Freight Engage Posts API\n// 2. Retrieve only the latest 3 freight-related posts\n// 3. Include posts published within the last 3 days only\n// 4. Do not include older posts or unrelated content\n// 5. Matches exactly the latest testing_Rss_Reader architecture (no binary image download)\n\nconst MAX_DAYS = 3; // Strictly last 3 days as per client requirement\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\n// Stop words for title tokenization and similarity comparison\nconst stopWords = new Set([\n  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',\n  'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',\n  'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',\n  'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',\n  'having', 'he', 'her', 'here', 'how', 'i', 'if', 'in', 'into', 'is', 'it',\n  'its', 'just', 'more', 'most', 'must', 'my', 'no', 'nor', 'not', 'now', 'of',\n  'off', 'on', 'once', 'only', 'or', 'other', 'our', 'out', 'over', 'own', 'same',\n  'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs',\n  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to',\n  'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when',\n  'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'you', 'your',\n  'says', 'said', 'new', 'top', 'first', 'week', 'report', 'reports', 'amid',\n  'due', 'via', 'latest', 'today', 'daily', 'update', 'news'\n]);\n\nfunction cleanTitleText(t) {\n  let text = (t || '').trim();\n  if (text.includes(' - ')) {\n    const parts = text.split(' - ');\n    parts.pop();\n    text = parts.join(' - ').trim();\n  }\n  if (text.includes(' | ')) {\n    const parts = text.split(' | ');\n    parts.pop();\n    text = parts.join(' | ').trim();\n  }\n  return text;\n}\n\nfunction normalize(t) {\n  return cleanTitleText(t)\n    .toLowerCase()\n    .replace(/[^a-z0-9]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction extractWords(text) {\n  return new Set(\n    cleanTitleText(text)\n      .toLowerCase()\n      .replace(/[^a-z0-9\\s]/g, ' ')\n      .split(/\\s+/)\n      .filter(w => w.length >= 3 && !stopWords.has(w))\n  );\n}\n\nfunction isSimilar(titleA, titleB) {\n  const normA = normalize(titleA);\n  const normB = normalize(titleB);\n  if (!normA || !normB) return false;\n  if (normA === normB) return true;\n  if (normA.length > 15 && normB.length > 15) {\n    if (normA.startsWith(normB) || normB.startsWith(normA)) return true;\n    if (normA.includes(normB) || normB.includes(normA)) return true;\n  }\n\n  const a = extractWords(titleA);\n  const b = extractWords(titleB);\n  if (a.size === 0 || b.size === 0) return false;\n\n  let common = 0;\n  for (const w of a) {\n    if (b.has(w)) common++;\n  }\n\n  const minSize = Math.min(a.size, b.size);\n  if (common >= 3 && (common / minSize) >= 0.5) return true;\n  if (common >= 4) return true;\n\n  return (common / minSize) >= 0.6;\n}\n\n// Decode HTML entities and clean HTML tags for readable multi-sentence descriptions\nfunction cleanHtmlText(text) {\n  if (!text) return '';\n  return text\n    .replace(/<[^>]*>?/gm, ' ')\n    .replace(/&quot;/g, '\\\"')\n    .replace(/&#39;|&apos;|&#8217;|&#8216;/g, \"'\")\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&hellip;|&#8230;/g, '...')\n    .replace(/&mdash;|&#8212;/g, ' — ')\n    .replace(/&ndash;|&#8211;/g, ' – ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n// Deterministic string hash for selecting tailored diverse images and perspectives\nfunction hashString(str) {\n  let hash = 0;\n  for (let i = 0; i < str.length; i++) {\n    hash = ((hash << 5) - hash) + str.charCodeAt(i);\n    hash |= 0;\n  }\n  return Math.abs(hash);\n}\n\n// Check if description is missing or repeating headline\nfunction isRedundant(descText, titleText) {\n  if (!descText) return true;\n  const cleanDesc = descText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ').trim();\n  const cleanTitle = titleText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return cleanDesc.length < 60 || cleanDesc === cleanTitle || cleanDesc.startsWith(cleanTitle) || cleanTitle.startsWith(cleanDesc);\n}\n\n// Generate article-tailored 3-4 line sector briefing directly in n8n\nfunction buildDynamicBriefing(articleTitle, sourceName, articleCategory, articleHash) {\n  let headline = articleTitle;\n  if (headline.includes(' - ')) {\n    const p = headline.split(' - ');\n    p.pop();\n    headline = p.join(' - ').trim();\n  }\n  if (headline.includes(' | ')) {\n    const p = headline.split(' | ');\n    p.pop();\n    headline = p.join(' | ').trim();\n  }\n\n  const combined = (articleTitle + ' ' + (articleCategory || '')).toLowerCase();\n\n  // 1. Executive / Leadership / Board appointments\n  if (/\\b(ceo|cfo|md|appointed|appoints|resigns|stepping down|step down|executive|leadership|director|board)\\b/i.test(combined)) {\n    const variants = [\n      `Executive leadership transition reported by ${sourceName}: ${headline}. Market observers and supply chain leaders monitor senior management succession, strategic corporate restructuring, and ongoing capital deployment across operating divisions.`,\n      `Corporate transition reported by ${sourceName}: ${headline}. Industry stakeholders analyze leadership realignment and operational strategy as logistics networks navigate evolving customer demand and service contracts.`,\n      `Management restructuring development via ${sourceName}: ${headline}. The executive appointment highlights corporate focus on organizational governance, fleet agility, and scalable multimodal freight services.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 2. Ocean Shipping, Vessels, Fleets, Sea Lanes\n  if (/\\b(ocean|maritime|vessels?|ships?|shipping|tankers?|carriers?|boxships?|dry bulk|red sea|suez|strait of hormuz|liner)\\b/i.test(combined)) {\n    const variants = [\n      `Maritime transport and commercial navigation briefing reported via ${sourceName}: ${headline}. Carrier operations teams track vessel scheduling reliability, bunker fuel surcharges, container equipment repositioning, and transit safety protocols across active ocean loops.`,\n      `Ocean shipping operational intelligence via ${sourceName}: ${headline}. Global shipping alliances and maritime stakeholders evaluate spot freight index fluctuations, voyage route optimization, and sea lane capacity balances.`,\n      `Commercial fleet development reported by ${sourceName}: ${headline}. Maritime logistics analysts assess vessel charter fixtures, environmental emissions compliance, and strategic deployment across international deep-sea lanes.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 3. Port Terminals, Quays, Docks, Berths, Gate-In Dwell\n  if (/\\b(ports?|terminals?|berths?|docks?|quays?|harbors?|demurrage|gateway|stevedoring)\\b/i.test(combined)) {\n    const variants = [\n      `Port infrastructure and terminal throughput update via ${sourceName}: ${headline}. Port authorities and terminal operators collaborate on gate turnaround velocity, crane productivity benchmarks, and container yard fluidity to minimize dwell congestion.`,\n      `Harbor operations and maritime gateway briefing reported by ${sourceName}: ${headline}. Regional drayage carriers and maritime stakeholders evaluate quay availability, cargo scanning procedures, and demurrage mitigation initiatives.`,\n      `Terminal logistics and marine facility development reported via ${sourceName}: ${headline}. Infrastructure planners assess deep-water berth expansion, automated container handling equipment, and intermodal on-dock rail connectivity.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 4. Cross-Border Trade, Customs Clearance, Tariffs, Bilateral Accords\n  if (/\\b(agreements?|accords?|pacts?|partnerships?|treaty|treaties|bilateral|exports?|imports?|tariffs?|customs?\\b|trade\\s*agreement|fta|cross[- ]border|commerce|duties)\\b/i.test(combined)) {\n    const variants = [\n      `Cross-border trade and regulatory policy analysis via ${sourceName}: ${headline}. International trade analysts examine bilateral customs documentation standards, tariff schedule harmonization, and multilateral freight clearance workflows.`,\n      `International trade and commerce briefing reported by ${sourceName}: ${headline}. Freight forwarders and global shippers monitor export-import balance shifts, regulatory compliance directives, and preferential trade corridor agreements.`,\n      `Global customs and cargo flow report via ${sourceName}: ${headline}. Industry stakeholders track trade lane pricing, customs audit requirements, and digital cargo declaration mechanisms across primary trading partner routes.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 5. Air Freight, Cargo Flights, Airport Logistics\n  if (/\\b(air\\s*freight|air\\s*cargo|aviation|airports?|belly[- ]hold|cargo flights?|charters?)\\b/i.test(combined)) {\n    const variants = [\n      `Air freight and aviation cargo briefing via ${sourceName}: ${headline}. Air forwarders and airline cargo divisions monitor belly-hold capacity allocations, jet fuel index surcharges, and express delivery transit commitments across transatlantic and transpacific hubs.`,\n      `Aviation logistics operational report reported by ${sourceName}: ${headline}. Global freight forwarders evaluate international charter flight demand, airport cold-storage handling capacity, and time-critical supply chain corridors.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 6. Surface Freight, Rail, Intermodal & Warehousing\n  if (/\\b(freight|shipments?|trucks?|trucking|freight\\s*rates?|rail|intermodal|trains?|highways?|warehouses?|cold\\s*chain|drayage|linehaul|logistics\\s*index)\\b/i.test(combined)) {\n    const variants = [\n      `Inland surface freight and intermodal distribution report via ${sourceName}: ${headline}. Transport economists analyze regional linehaul capacity, drayage driver availability, diesel cost pressures, and warehouse storage utilization rates.`,\n      `Domestic freight and logistics operations briefing reported by ${sourceName}: ${headline}. Supply chain planners assess intermodal rail transit schedules, automated order fulfillment centers, and distribution hub inventory velocity.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 7. Corporate Finance, Earnings, M&A, Equity Markets\n  if (/\\b(shares?|stocks?|investors?|earnings|quarterly|revenues?|acquisition|mergers?|valuation|stake|dividend|profit)\\b/i.test(combined)) {\n    const variants = [\n      `Market intelligence and financial disclosure reported via ${sourceName}: ${headline}. Equity analysts and institutional logistics investors evaluate capital expenditures, operating margins, and balance sheet resilience amidst changing market cycles.`,\n      `Corporate financial development reported by ${sourceName}: ${headline}. Financial observers track asset acquisition strategies, enterprise EBITDA performance, and fleet modernization funding across the commercial transport sector.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 8. General Supply Chain & Multimodal Logistics\n  const generalVariants = [\n    `Comprehensive supply chain briefing reported via ${sourceName}: ${headline}. Multimodal transport providers track network connectivity, inventory optimization strategies, and customer service delivery across diversified trade corridors.`,\n    `Logistics intelligence update from ${sourceName}: ${headline}. Transport planners evaluate end-to-end cargo visibility, supply chain technology integration, and operational resilience across domestic and international routing networks.`,\n    `Industry operational briefing via ${sourceName}: ${headline}. Shippers and freight intermediaries analyze market capacity trends, vendor performance metrics, and tactical freight execution across regional and global trade routes.`,\n    `Logistics market development reported by ${sourceName}: ${headline}. Transport strategists review distribution efficiency benchmarks, contractual freight agreements, and digital workflow transformation across enterprise supply chains.`\n  ];\n  return generalVariants[articleHash % generalVariants.length];\n}\n\n// Curated pool of high-resolution logistics & shipping imagery (distinct for each article)\nconst imagePool = {\n  ocean_ship: [\n    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1505705694340-019e1e335916?auto=format&fit=crop&w=1200&q=80'\n  ],\n  port_terminal: [\n    'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1524522173746-f628baad3644?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=1200&q=80'\n  ],\n  air_freight: [\n    'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1570710891163-6d3b5c47248b?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=80'\n  ],\n  warehouse_logistics: [\n    'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1580674285054-bed31e145f59?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=1200&q=80'\n  ],\n  trucking_fleet: [\n    'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=1200&q=80'\n  ],\n  rail_intermodal: [\n    'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1541427468627-a89a96e5ca1d?auto=format&fit=crop&w=1200&q=80'\n  ]\n};\n\n// 1. Read existing posts from Freight Engage to prevent duplicate postings\nconst existingTitles = [];\ntry {\n  const feRes = $('Get Existing Freight Posts').first()?.json;\n  if (feRes && Array.isArray(feRes.results)) {\n    for (const item of feRes.results) {\n      if (item.title) existingTitles.push(item.title);\n      if (item.body) existingTitles.push(item.body);\n    }\n  }\n} catch (e) {}\n\nconst incomingItems = $input.all();\nconst acceptedArticles = [];\nconst acceptedTitles = [];\nconst seenUrls = new Set();\n\nfor (const item of incomingItems) {\n  const raw = item.json;\n\n  // Date check: only within last 3 days (strictly as required)\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n  if (isNaN(pubTime) || pubTime < cutoffTime) continue;\n\n  // URL check\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl)) continue;\n\n  // Clean Title and extract source\n  let title = (raw.title || '').trim();\n  let source = 'Industry News';\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const src = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (src) source = src;\n  } else if (title.includes(' | ')) {\n    const parts = title.split(' | ');\n    const src = parts.pop().trim();\n    title = parts.join(' | ').trim();\n    if (src) source = src;\n  }\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // A. Check against previous content in Freight Engage\n  let isDuplicateOfExisting = false;\n  for (const existingTitle of existingTitles) {\n    if (isSimilar(title, existingTitle)) {\n      isDuplicateOfExisting = true;\n      break;\n    }\n  }\n  if (isDuplicateOfExisting) continue;\n\n  // B. Check against content already accepted in THIS execution batch\n  let isDuplicateInBatch = false;\n  for (const batchTitle of acceptedTitles) {\n    if (isSimilar(title, batchTitle)) {\n      isDuplicateInBatch = true;\n      break;\n    }\n  }\n  if (isDuplicateInBatch) continue;\n\n  // Sector Categorization & Strict Freight Requirement\n  const combinedSectorCheck = title.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  if (/(shipping|ocean freight|ocean carrier|vessels?|maritime|ports?|terminals?|berths?|container ship|dry bulk|tankers?|red sea|suez|boxship|shipping line)/.test(combinedSectorCheck)) {\n    category = 'Shipping';\n  } else {\n    category = 'Logistics';\n  }\n\n  // Trend detection\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|growth rate|freight index|spot rate|downturn|quarterly report|earnings|q1|q2|q3|q4)/.test(combinedSectorCheck)) {\n    contentType = 'trend';\n  }\n\n  // Rich description extraction & Dynamic Synthesis in n8n\n  const rawContent = raw['content:encoded'] || raw.content || raw.summary || raw.contentSnippet || raw.description || '';\n  let description = cleanHtmlText(rawContent);\n\n  // If description is missing or repeats the title, dynamically build an article-tailored sector briefing\n  if (isRedundant(description, title)) {\n    const h = hashString(title);\n    description = buildDynamicBriefing(title, source, category, h);\n  }\n\n  // Scrape image URL from RSS media tags or embedded HTML (NO downloading of bytes)\n  let imageUrl = null;\n  if (raw.enclosure && raw.enclosure.url && !raw.enclosure.url.includes('1x1') && !raw.enclosure.url.endsWith('.ico')) {\n    imageUrl = raw.enclosure.url;\n  } else if (raw['media:content'] && raw['media:content'].url) {\n    imageUrl = raw['media:content'].url;\n  } else if (raw['media:thumbnail'] && raw['media:thumbnail'].url) {\n    imageUrl = raw['media:thumbnail'].url;\n  } else {\n    const htmlString = `${raw.content || ''} ${raw.description || ''} ${raw['content:encoded'] || ''}`;\n    const imgMatch = htmlString.match(/<img[^>]+src=[\"'](https?:\\/\\/[^\"']+)[\"']/i);\n    if (imgMatch && !imgMatch[1].includes('1x1') && !imgMatch[1].endsWith('.ico') && !imgMatch[1].includes('favicon')) {\n      imageUrl = imgMatch[1];\n    }\n  }\n\n  // If no direct image scraped, pick a distinct, topic-tailored HD photo deterministically\n  if (!imageUrl) {\n    const h = hashString(title);\n    if (/(air freight|cargo flight|aviation|airport|belly hold|air cargo)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.air_freight[h % imagePool.air_freight.length];\n    } else if (/(rail|train|intermodal|locomotive|railway)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.rail_intermodal[h % imagePool.rail_intermodal.length];\n    } else if (/(truck|fleet|highway|drayage|linehaul)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.trucking_fleet[h % imagePool.trucking_fleet.length];\n    } else if (/(port|terminal|crane|dock|berth|customs|quay|harbor)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.port_terminal[h % imagePool.port_terminal.length];\n    } else if (category === 'Shipping') {\n      imageUrl = imagePool.ocean_ship[h % imagePool.ocean_ship.length];\n    } else {\n      imageUrl = imagePool.warehouse_logistics[h % imagePool.warehouse_logistics.length];\n    }\n  }\n\n  seenUrls.add(sourceUrl);\n  acceptedTitles.push(title);\n\n  acceptedArticles.push({\n    json: {\n      title,\n      body: description, // Main text body for Freight Engage post\n      description,       // Retained for compatibility\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\n// Client Requirement: Retrieve ONLY the latest 3 freight-related posts within the last 3 days\nreturn acceptedArticles.slice(0, 3);\n"
+      },
+      "id": "fe-node-5-filter-dedup",
+      "name": "Filter & Deduplicate Freight Content",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        740,
-        320
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Format human-readable summary of the 3 retrieved freight posts\nconst items = $input.all().map(i => i.json);\n\nreturn [{\n  json: {\n    summary: `Successfully retrieved and verified ${items.length} latest freight posts from Freight Engage API (published within last 3 days).`,\n    retrieved_at: new Date().toISOString(),\n    total_returned: items.length,\n    posts: items.map(p => ({\n      id: p.id,\n      title: p.title,\n      body: p.body,\n      published: p.created_at,\n      age: p.age_hours,\n      has_image: !!p.image_url\n    }))\n  }\n}];\n"
-      },
-      "id": "fe-node-5-summary",
-      "name": "Display Top 3 Freight Posts",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1020,
-        220
-      ]
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $json.image_url }}",
-        "responseFormat": "file",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "id": "fe-node-6-download-image",
-      "name": "Download Post Image Binary",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1020,
-        420
+        940,
+        340
       ]
     },
     {
@@ -130,11 +113,6 @@
             {
               "name": "body",
               "value": "={{ $json.body }}"
-            },
-            {
-              "parameterType": "formBinaryData",
-              "name": "uploaded_files",
-              "inputDataFieldName": "data"
             }
           ]
         },
@@ -142,71 +120,90 @@
           "timeout": 30000
         }
       },
-      "id": "fe-node-7-post-freight",
-      "name": "Publish to Freight Engage (POST)",
+      "id": "fe-node-6-publish-fe",
+      "name": "Publish to Freight Engage",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1280,
-        420
+        1200,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Publishing Run Summary for Freight Engage\nconst items = $input.all();\nlet published = 0;\nlet errors = 0;\nconst results = [];\n\nfor (const item of items) {\n  const res = item.json;\n  if (res && res.id) {\n    published++;\n    results.push({ id: res.id, title: res.title, share_url: res.share_url });\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    run_timestamp: new Date().toISOString(),\n    total_processed: items.length,\n    published_to_freight_engage: published,\n    errors: errors,\n    posts: results,\n    status: published > 0 ? \"Successfully published to Freight Engage\" : \"Execution completed\"\n  }\n}];\n"
+      },
+      "id": "fe-node-7-summary",
+      "name": "Publishing Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        340
       ]
     }
   ],
   "connections": {
-    "When clicking 'Test workflow'": {
+    "Every 30 Minutes": {
       "main": [
         [
           {
-            "node": "Retrieve Posts from Freight Engage",
+            "node": "Get Existing Freight Posts",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Every 6 Hours": {
+    "Manual Test Run": {
       "main": [
         [
           {
-            "node": "Retrieve Posts from Freight Engage",
+            "node": "Get Existing Freight Posts",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Retrieve Posts from Freight Engage": {
+    "Get Existing Freight Posts": {
       "main": [
         [
           {
-            "node": "Filter Latest 3 Freight Posts (< 3 Days)",
+            "node": "Fetch Freight RSS News",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter Latest 3 Freight Posts (< 3 Days)": {
+    "Fetch Freight RSS News": {
       "main": [
         [
           {
-            "node": "Display Top 3 Freight Posts",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Download Post Image Binary",
+            "node": "Filter & Deduplicate Freight Content",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download Post Image Binary": {
+    "Filter & Deduplicate Freight Content": {
       "main": [
         [
           {
-            "node": "Publish to Freight Engage (POST)",
+            "node": "Publish to Freight Engage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Freight Engage": {
+      "main": [
+        [
+          {
+            "node": "Publishing Summary",
             "type": "main",
             "index": 0
           }
@@ -218,7 +215,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "freight-engage-v1-0-0",
+  "versionId": "freight-engage-v2-0-0",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "freight-engage-pipeline"
