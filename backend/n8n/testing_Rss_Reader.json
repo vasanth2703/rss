@@ -1,0 +1,190 @@
+{
+  "name": "LogiPulse - Logistics News RSS Ingestion Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "e305f884-3860-49ad-b1a7-573505c87e41",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -680,
+        140
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2565f659-546a-431c-8867-b457553fc5be",
+      "name": "Manual Test Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -680,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://livenews.avk07373.workers.dev/api/feed?limit=100",
+        "options": {}
+      },
+      "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Get Existing D1 Headlines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        40
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=%22freight+forwarding%22+OR+shipping+OR+logistics+OR+%22import+export%22+OR+%22customs+clearance%22+when:7d&hl=en-IN&gl=IN&ceid=IN:en",
+        "options": {}
+      },
+      "id": "2be54362-a833-49ce-81a4-807cc957702a",
+      "name": "Fetch Logistics RSS News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        -200,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// LogiPulse / Live News Testing Content Deduplicator, Dynamic Description & Image Extractor\n// Sections: All | Shipping | Logistics (with Freight Forwarding & Import/Export highlighted)\n// 1. Filters out articles older than 7 days\n// 2. Skips exact URL duplicates (comparing with Cloudflare D1 and current batch)\n// 3. Skips similar/scraped duplicate stories (comparing with Cloudflare D1 and current batch)\n// 4. Generates rich, article-tailored 3-4 line sector briefing with real source attribution\n// 5. Scrapes real images from RSS media tags or assigns tailored topic-based HD images\n// 6. Classifies into Shipping or Logistics\n\nconst MAX_DAYS = 7;\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\n// Stop words for title tokenization and similarity comparison\nconst stopWords = new Set([\n  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',\n  'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',\n  'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',\n  'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',\n  'having', 'he', 'her', 'here', 'how', 'i', 'if', 'in', 'into', 'is', 'it',\n  'its', 'just', 'more', 'most', 'must', 'my', 'no', 'nor', 'not', 'now', 'of',\n  'off', 'on', 'once', 'only', 'or', 'other', 'our', 'out', 'over', 'own', 'same',\n  'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs',\n  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to',\n  'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when',\n  'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'you', 'your',\n  'says', 'said', 'new', 'top', 'first', 'week', 'report', 'reports', 'amid',\n  'due', 'via', 'latest', 'today', 'daily', 'update', 'news'\n]);\n\nfunction cleanTitleText(t) {\n  let text = (t || '').trim();\n  if (text.includes(' - ')) {\n    const parts = text.split(' - ');\n    parts.pop();\n    text = parts.join(' - ').trim();\n  }\n  if (text.includes(' | ')) {\n    const parts = text.split(' | ');\n    parts.pop();\n    text = parts.join(' | ').trim();\n  }\n  return text;\n}\n\nfunction normalize(t) {\n  return cleanTitleText(t)\n    .toLowerCase()\n    .replace(/[^a-z0-9]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction extractWords(text) {\n  return new Set(\n    cleanTitleText(text)\n      .toLowerCase()\n      .replace(/[^a-z0-9\\s]/g, ' ')\n      .split(/\\s+/)\n      .filter(w => w.length >= 3 && !stopWords.has(w))\n  );\n}\n\nfunction isSimilar(titleA, titleB) {\n  const normA = normalize(titleA);\n  const normB = normalize(titleB);\n  if (!normA || !normB) return false;\n  if (normA === normB) return true;\n  if (normA.length > 15 && normB.length > 15) {\n    if (normA.startsWith(normB) || normB.startsWith(normA)) return true;\n    if (normA.includes(normB) || normB.includes(normA)) return true;\n  }\n\n  const a = extractWords(titleA);\n  const b = extractWords(titleB);\n  if (a.size === 0 || b.size === 0) return false;\n\n  let common = 0;\n  for (const w of a) {\n    if (b.has(w)) common++;\n  }\n\n  const minSize = Math.min(a.size, b.size);\n  if (common >= 3 && (common / minSize) >= 0.5) return true;\n  if (common >= 4) return true;\n\n  return (common / minSize) >= 0.6;\n}\n\n// Decode HTML entities and clean HTML tags for readable multi-sentence descriptions\nfunction cleanHtmlText(text) {\n  if (!text) return '';\n  return text\n    .replace(/<[^>]*>?/gm, ' ')\n    .replace(/&quot;/g, '\\\"')\n    .replace(/&#39;|&apos;|&#8217;|&#8216;/g, \"'\")\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&hellip;|&#8230;/g, '...')\n    .replace(/&mdash;|&#8212;/g, ' — ')\n    .replace(/&ndash;|&#8211;/g, ' – ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n// Deterministic string hash for selecting tailored diverse images and perspectives\nfunction hashString(str) {\n  let hash = 0;\n  for (let i = 0; i < str.length; i++) {\n    hash = ((hash << 5) - hash) + str.charCodeAt(i);\n    hash |= 0;\n  }\n  return Math.abs(hash);\n}\n\n// Check if description is missing or repeating headline\nfunction isRedundant(descText, titleText) {\n  if (!descText) return true;\n  const cleanDesc = descText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ').trim();\n  const cleanTitle = titleText.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return cleanDesc.length < 60 || cleanDesc === cleanTitle || cleanDesc.startsWith(cleanTitle) || cleanTitle.startsWith(cleanDesc);\n}\n\n// Generate article-tailored 3-4 line sector briefing directly in n8n\nfunction buildDynamicBriefing(articleTitle, sourceName, articleCategory, articleHash) {\n  let headline = articleTitle;\n  if (headline.includes(' - ')) {\n    const p = headline.split(' - ');\n    p.pop();\n    headline = p.join(' - ').trim();\n  }\n  if (headline.includes(' | ')) {\n    const p = headline.split(' | ');\n    p.pop();\n    headline = p.join(' | ').trim();\n  }\n\n  const combined = (articleTitle + ' ' + (articleCategory || '')).toLowerCase();\n\n  // 1. Executive / Leadership / Board appointments\n  if (/\\b(ceo|cfo|md|appointed|appoints|resigns|stepping down|step down|executive|leadership|director|board)\\b/i.test(combined)) {\n    const variants = [\n      `Executive leadership transition reported by ${sourceName}: ${headline}. Market observers and supply chain leaders monitor senior management succession, strategic corporate restructuring, and ongoing capital deployment across operating divisions.`,\n      `Corporate transition reported by ${sourceName}: ${headline}. Industry stakeholders analyze leadership realignment and operational strategy as logistics networks navigate evolving customer demand and service contracts.`,\n      `Management restructuring development via ${sourceName}: ${headline}. The executive appointment highlights corporate focus on organizational governance, fleet agility, and scalable multimodal freight services.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 2. Ocean Shipping, Vessels, Fleets, Sea Lanes\n  if (/\\b(ocean|maritime|vessels?|ships?|shipping|tankers?|carriers?|boxships?|dry bulk|red sea|suez|strait of hormuz|liner)\\b/i.test(combined)) {\n    const variants = [\n      `Maritime transport and commercial navigation briefing reported via ${sourceName}: ${headline}. Carrier operations teams track vessel scheduling reliability, bunker fuel surcharges, container equipment repositioning, and transit safety protocols across active ocean loops.`,\n      `Ocean shipping operational intelligence via ${sourceName}: ${headline}. Global shipping alliances and maritime stakeholders evaluate spot freight index fluctuations, voyage route optimization, and sea lane capacity balances.`,\n      `Commercial fleet development reported by ${sourceName}: ${headline}. Maritime logistics analysts assess vessel charter fixtures, environmental emissions compliance, and strategic deployment across international deep-sea lanes.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 3. Port Terminals, Quays, Docks, Berths, Gate-In Dwell\n  if (/\\b(ports?|terminals?|berths?|docks?|quays?|harbors?|demurrage|gateway|stevedoring)\\b/i.test(combined)) {\n    const variants = [\n      `Port infrastructure and terminal throughput update via ${sourceName}: ${headline}. Port authorities and terminal operators collaborate on gate turnaround velocity, crane productivity benchmarks, and container yard fluidity to minimize dwell congestion.`,\n      `Harbor operations and maritime gateway briefing reported by ${sourceName}: ${headline}. Regional drayage carriers and maritime stakeholders evaluate quay availability, cargo scanning procedures, and demurrage mitigation initiatives.`,\n      `Terminal logistics and marine facility development reported via ${sourceName}: ${headline}. Infrastructure planners assess deep-water berth expansion, automated container handling equipment, and intermodal on-dock rail connectivity.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 4. Cross-Border Trade, Customs Clearance, Tariffs, Bilateral Accords\n  if (/\\b(agreements?|accords?|pacts?|partnerships?|treaty|treaties|bilateral|exports?|imports?|tariffs?|customs?\\b|trade\\s*agreement|fta|cross[- ]border|commerce|duties)\\b/i.test(combined)) {\n    const variants = [\n      `Cross-border trade and regulatory policy analysis via ${sourceName}: ${headline}. International trade analysts examine bilateral customs documentation standards, tariff schedule harmonization, and multilateral freight clearance workflows.`,\n      `International trade and commerce briefing reported by ${sourceName}: ${headline}. Freight forwarders and global shippers monitor export-import balance shifts, regulatory compliance directives, and preferential trade corridor agreements.`,\n      `Global customs and cargo flow report via ${sourceName}: ${headline}. Industry stakeholders track trade lane pricing, customs audit requirements, and digital cargo declaration mechanisms across primary trading partner routes.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 5. Air Freight, Cargo Flights, Airport Logistics\n  if (/\\b(air\\s*freight|air\\s*cargo|aviation|airports?|belly[- ]hold|cargo flights?|charters?)\\b/i.test(combined)) {\n    const variants = [\n      `Air freight and aviation cargo briefing via ${sourceName}: ${headline}. Air forwarders and airline cargo divisions monitor belly-hold capacity allocations, jet fuel index surcharges, and express delivery transit commitments across transatlantic and transpacific hubs.`,\n      `Aviation logistics operational report reported by ${sourceName}: ${headline}. Global freight forwarders evaluate international charter flight demand, airport cold-storage handling capacity, and time-critical supply chain corridors.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 6. Surface Freight, Rail, Intermodal & Warehousing\n  if (/\\b(freight|shipments?|trucks?|trucking|freight\\s*rates?|rail|intermodal|trains?|highways?|warehouses?|cold\\s*chain|drayage|linehaul|logistics\\s*index)\\b/i.test(combined)) {\n    const variants = [\n      `Inland surface freight and intermodal distribution report via ${sourceName}: ${headline}. Transport economists analyze regional linehaul capacity, drayage driver availability, diesel cost pressures, and warehouse storage utilization rates.`,\n      `Domestic freight and logistics operations briefing reported by ${sourceName}: ${headline}. Supply chain planners assess intermodal rail transit schedules, automated order fulfillment centers, and distribution hub inventory velocity.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 7. Corporate Finance, Earnings, M&A, Equity Markets\n  if (/\\b(shares?|stocks?|investors?|earnings|quarterly|revenues?|acquisition|mergers?|valuation|stake|dividend|profit)\\b/i.test(combined)) {\n    const variants = [\n      `Market intelligence and financial disclosure reported via ${sourceName}: ${headline}. Equity analysts and institutional logistics investors evaluate capital expenditures, operating margins, and balance sheet resilience amidst changing market cycles.`,\n      `Corporate financial development reported by ${sourceName}: ${headline}. Financial observers track asset acquisition strategies, enterprise EBITDA performance, and fleet modernization funding across the commercial transport sector.`\n    ];\n    return variants[articleHash % variants.length];\n  }\n\n  // 8. General Supply Chain & Multimodal Logistics\n  const generalVariants = [\n    `Comprehensive supply chain briefing reported via ${sourceName}: ${headline}. Multimodal transport providers track network connectivity, inventory optimization strategies, and customer service delivery across diversified trade corridors.`,\n    `Logistics intelligence update from ${sourceName}: ${headline}. Transport planners evaluate end-to-end cargo visibility, supply chain technology integration, and operational resilience across domestic and international routing networks.`,\n    `Industry operational briefing via ${sourceName}: ${headline}. Shippers and freight intermediaries analyze market capacity trends, vendor performance metrics, and tactical freight execution across regional and global trade routes.`,\n    `Logistics market development reported by ${sourceName}: ${headline}. Transport strategists review distribution efficiency benchmarks, contractual freight agreements, and digital workflow transformation across enterprise supply chains.`\n  ];\n  return generalVariants[articleHash % generalVariants.length];\n}\n\n// Curated pool of high-resolution logistics & shipping imagery (distinct for each article)\nconst imagePool = {\n  ocean_ship: [\n    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1505705694340-019e1e335916?auto=format&fit=crop&w=1200&q=80'\n  ],\n  port_terminal: [\n    'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1524522173746-f628baad3644?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=1200&q=80'\n  ],\n  air_freight: [\n    'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1570710891163-6d3b5c47248b?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=80'\n  ],\n  warehouse_logistics: [\n    'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1580674285054-bed31e145f59?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=1200&q=80'\n  ],\n  trucking_fleet: [\n    'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=1200&q=80'\n  ],\n  rail_intermodal: [\n    'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',\n    'https://images.unsplash.com/photo-1541427468627-a89a96e5ca1d?auto=format&fit=crop&w=1200&q=80'\n  ]\n};\n\n// 1. Read existing headlines and URLs already stored in Cloudflare D1\nconst existingTitles = [];\nconst existingUrls = new Set();\ntry {\n  const d1Res = $('Get Existing D1 Headlines').first()?.json;\n  if (d1Res && Array.isArray(d1Res.data)) {\n    for (const item of d1Res.data) {\n      if (item.title) existingTitles.push(item.title);\n      if (item.source_url) existingUrls.add(item.source_url.trim());\n    }\n  }\n} catch (e) {}\n\nconst incomingItems = $input.all();\nconst acceptedArticles = [];\nconst acceptedTitles = [];\nconst seenUrls = new Set();\n\nfor (const item of incomingItems) {\n  const raw = item.json;\n\n  // Date check: only within last 7 days\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n  if (isNaN(pubTime) || pubTime < cutoffTime) continue;\n\n  // URL check\n  const sourceUrl = (raw.link || raw.guid || '').trim();\n  if (!sourceUrl || seenUrls.has(sourceUrl) || existingUrls.has(sourceUrl)) continue;\n\n  // Clean Title and extract source\n  let title = (raw.title || '').trim();\n  let source = 'Industry News';\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const src = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (src) source = src;\n  } else if (title.includes(' | ')) {\n    const parts = title.split(' | ');\n    const src = parts.pop().trim();\n    title = parts.join(' | ').trim();\n    if (src) source = src;\n  }\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // A. Check against previous content in Cloudflare D1\n  let isDuplicateOfExisting = false;\n  for (const existingTitle of existingTitles) {\n    if (isSimilar(title, existingTitle)) {\n      isDuplicateOfExisting = true;\n      break;\n    }\n  }\n  if (isDuplicateOfExisting) continue;\n\n  // B. Check against content already accepted in THIS execution batch\n  let isDuplicateInBatch = false;\n  for (const batchTitle of acceptedTitles) {\n    if (isSimilar(title, batchTitle)) {\n      isDuplicateInBatch = true;\n      break;\n    }\n  }\n  if (isDuplicateInBatch) continue;\n\n  // Sector Categorization: Shipping & Logistics\n  const combinedSectorCheck = title.toLowerCase();\n  let category = 'Logistics';\n  let contentType = 'news';\n\n  if (/(shipping|ocean freight|ocean carrier|vessels?|maritime|ports?|terminals?|berths?|container ship|dry bulk|tankers?|red sea|suez|boxship|shipping line)/.test(combinedSectorCheck)) {\n    category = 'Shipping';\n  } else {\n    category = 'Logistics';\n  }\n\n  // Trend detection\n  if (/(surge|plunge|soar|record high|forecast|outlook|inflation|growth rate|freight index|spot rate|downturn|quarterly report|earnings|q1|q2|q3|q4)/.test(combinedSectorCheck)) {\n    contentType = 'trend';\n  }\n\n  // Rich description extraction & Dynamic Synthesis in n8n\n  const rawContent = raw['content:encoded'] || raw.content || raw.summary || raw.contentSnippet || raw.description || '';\n  let description = cleanHtmlText(rawContent);\n\n  // If description is missing or repeats the title, dynamically build an article-tailored sector briefing\n  if (isRedundant(description, title)) {\n    const h = hashString(title);\n    description = buildDynamicBriefing(title, source, category, h);\n  }\n\n  // Scrape image from RSS or embedded HTML tags\n  let imageUrl = null;\n  if (raw.enclosure && raw.enclosure.url && !raw.enclosure.url.includes('1x1') && !raw.enclosure.url.endsWith('.ico')) {\n    imageUrl = raw.enclosure.url;\n  } else if (raw['media:content'] && raw['media:content'].url) {\n    imageUrl = raw['media:content'].url;\n  } else if (raw['media:thumbnail'] && raw['media:thumbnail'].url) {\n    imageUrl = raw['media:thumbnail'].url;\n  } else {\n    const htmlString = `${raw.content || ''} ${raw.description || ''} ${raw['content:encoded'] || ''}`;\n    const imgMatch = htmlString.match(/<img[^>]+src=[\"'](https?:\\/\\/[^\"']+)[\"']/i);\n    if (imgMatch && !imgMatch[1].includes('1x1') && !imgMatch[1].endsWith('.ico') && !imgMatch[1].includes('favicon')) {\n      imageUrl = imgMatch[1];\n    }\n  }\n\n  // If no direct image scraped, pick a distinct, topic-tailored HD photo deterministically\n  if (!imageUrl) {\n    const h = hashString(title);\n    if (/(air freight|cargo flight|aviation|airport|belly hold|air cargo)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.air_freight[h % imagePool.air_freight.length];\n    } else if (/(rail|train|intermodal|locomotive|railway)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.rail_intermodal[h % imagePool.rail_intermodal.length];\n    } else if (/(truck|fleet|highway|drayage|linehaul)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.trucking_fleet[h % imagePool.trucking_fleet.length];\n    } else if (/(port|terminal|crane|dock|berth|customs|quay|harbor)/.test(title.toLowerCase())) {\n      imageUrl = imagePool.port_terminal[h % imagePool.port_terminal.length];\n    } else if (category === 'Shipping') {\n      imageUrl = imagePool.ocean_ship[h % imagePool.ocean_ship.length];\n    } else {\n      imageUrl = imagePool.warehouse_logistics[h % imagePool.warehouse_logistics.length];\n    }\n  }\n\n  seenUrls.add(sourceUrl);\n  acceptedTitles.push(title);\n\n  acceptedArticles.push({\n    json: {\n      title,\n      description,\n      source,\n      source_url: sourceUrl,\n      image_url: imageUrl,\n      category,\n      published_at: new Date(pubTime).toISOString(),\n      content_type: contentType\n    }\n  });\n}\n\nreturn acceptedArticles;\n"
+      },
+      "id": "78a9c201-92df-4d37-881b-858348d407ff",
+      "name": "Filter & Deduplicate Similar Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://livenews.avk07373.workers.dev/api/feed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "id": "f58de201-419b-4bc6-921c-34859a4bb331",
+      "name": "Ingest into LogiPulse D1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        40
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ingestion Run Summary\nconst items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const j = item.json;\n  const statusCode = j.statusCode || j.status || 0;\n  if (statusCode === 201 || (j.id && !j.duplicate)) {\n    inserted++;\n  } else if (statusCode === 409 || j.duplicate || j.status === 'duplicate_skipped') {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    status: errors === 0 ? 'success' : 'completed'\n  }\n}];"
+      },
+      "id": "893c0291-72da-4f11-9a75-b82736159c34",
+      "name": "Ingestion Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        40
+      ]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Existing D1 Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test Run": {
+      "main": [
+        [
+          {
+            "node": "Get Existing D1 Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing D1 Headlines": {
+      "main": [
+        [
+          {
+            "node": "Fetch Logistics RSS News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Logistics RSS News": {
+      "main": [
+        [
+          {
+            "node": "Filter & Deduplicate Similar Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Deduplicate Similar Content": {
+      "main": [
+        [
+          {
+            "node": "Ingest into LogiPulse D1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest into LogiPulse D1": {
+      "main": [
+        [
+          {
+            "node": "Ingestion Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
