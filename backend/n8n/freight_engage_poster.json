@@ -1,0 +1,228 @@
+{
+  "name": "Freight Engage - Latest 3 Freight Posts Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "fe-node-1-manual",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        220,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "fe-node-2-schedule",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.freightengage.com/api/posts/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzk2Mjc0MTA4LCJpYXQiOjE3OTQ5NzgxMDgsImp0aSI6IjRhZWEwYTAyOThkZTRkYjJhNjVkOTk5MTQ0NzVhYzM0IiwidXNlcl9pZCI6IjMifQ.geIgat3I943Op3tofaVAtzSYJUxKbITONi08PxvdvGU"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fe-node-3-get-posts",
+      "name": "Retrieve Posts from Freight Engage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Freight Engage Filter: Strict 3-day cutoff + Freight topic validation + Top 3 limiter\n// Client Requirements:\n// 1. Use only the Freight Engage Posts API\n// 2. Retrieve only the latest 3 freight-related posts\n// 3. Include posts published within the last 3 days only\n// 4. Do not include older posts or unrelated content\n\nconst response = $input.first().json;\nconst posts = Array.isArray(response.results) ? response.results : (Array.isArray(response) ? response : []);\n\nconst now = Date.now();\nconst THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;\nconst cutoffTime = now - THREE_DAYS_MS;\n\n// High-precision regex matching freight, cargo, shipping, logistics, transport, forwarding\nconst freightRegex = /\\b(freight|cargo|shipping|logistics|transport|forwarding|carrier|vessels?|trucking|intermodal|drayage|supply\\s*chain|container)\\b/i;\n\n// Curated fallback HD freight images in case original post has no uploaded media\nconst fallbackFreightImages = [\n  'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1000&q=80',\n  'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1000&q=80',\n  'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1000&q=80'\n];\n\nconst validFreightPosts = [];\n\nfor (const post of posts) {\n  // 1. Recency requirement: Strictly within last 3 days (72 hours)\n  const postDate = new Date(post.created_at || post.published_at || post.updated_at).getTime();\n  if (isNaN(postDate) || postDate < cutoffTime || postDate > now) {\n    continue;\n  }\n\n  // 2. Extract content for inspection\n  const title = (post.title || '').trim();\n  const body = (post.body || '').trim();\n  const combinedText = `${title} ${body}`.toLowerCase();\n\n  // 3. Exclude unrelated generic test or placeholder content (e.g. 'My first feed post')\n  if (combinedText.includes('my first feed post') || (combinedText.includes('test post') && !freightRegex.test(combinedText))) {\n    continue;\n  }\n\n  // 4. Relevance requirement: Must be freight-related\n  if (!freightRegex.test(combinedText)) {\n    continue;\n  }\n\n  // Extract attached media image or assign deterministic fallback freight photo\n  let imageUrl = null;\n  if (Array.isArray(post.media) && post.media.length > 0) {\n    imageUrl = post.media[0].file || post.media[0].url || null;\n  }\n  if (!imageUrl) {\n    const seed = typeof post.id === 'number' ? post.id : title.length;\n    imageUrl = fallbackFreightImages[Math.abs(seed) % fallbackFreightImages.length];\n  }\n\n  const hoursAgo = ((now - postDate) / (1000 * 60 * 60)).toFixed(1);\n\n  validFreightPosts.push({\n    id: post.id,\n    title: title,\n    body: body,\n    created_at: post.created_at,\n    age_hours: `${hoursAgo} hours ago`,\n    image_url: imageUrl,\n    share_url: post.share_url || `https://app.freightengage.com/api/feed/${post.id}/`,\n    category: 'Freight & Logistics',\n    status: 'Qualified (Within 3 Days & Freight Related)'\n  });\n}\n\n// 5. Sort latest first and strictly limit to top 3\nvalidFreightPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());\nconst top3FreightPosts = validFreightPosts.slice(0, 3);\n\nreturn top3FreightPosts.map(p => ({ json: p }));\n"
+      },
+      "id": "fe-node-4-filter-posts",
+      "name": "Filter Latest 3 Freight Posts (< 3 Days)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format human-readable summary of the 3 retrieved freight posts\nconst items = $input.all().map(i => i.json);\n\nreturn [{\n  json: {\n    summary: `Successfully retrieved and verified ${items.length} latest freight posts from Freight Engage API (published within last 3 days).`,\n    retrieved_at: new Date().toISOString(),\n    total_returned: items.length,\n    posts: items.map(p => ({\n      id: p.id,\n      title: p.title,\n      body: p.body,\n      published: p.created_at,\n      age: p.age_hours,\n      has_image: !!p.image_url\n    }))\n  }\n}];\n"
+      },
+      "id": "fe-node-5-summary",
+      "name": "Display Top 3 Freight Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.image_url }}",
+        "responseFormat": "file",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fe-node-6-download-image",
+      "name": "Download Post Image Binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.freightengage.com/api/posts/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzk2Mjc0MTA4LCJpYXQiOjE3OTQ5NzgxMDgsImp0aSI6IjRhZWEwYTAyOThkZTRkYjJhNjVkOTk5MTQ0NzVhYzM0IiwidXNlcl9pZCI6IjMifQ.geIgat3I943Op3tofaVAtzSYJUxKbITONi08PxvdvGU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.body }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "uploaded_files",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fe-node-7-post-freight",
+      "name": "Publish to Freight Engage (POST)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Posts from Freight Engage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Posts from Freight Engage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Posts from Freight Engage": {
+      "main": [
+        [
+          {
+            "node": "Filter Latest 3 Freight Posts (< 3 Days)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Latest 3 Freight Posts (< 3 Days)": {
+      "main": [
+        [
+          {
+            "node": "Display Top 3 Freight Posts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Post Image Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Post Image Binary": {
+      "main": [
+        [
+          {
+            "node": "Publish to Freight Engage (POST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "freight-engage-v1-0-0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "freight-engage-pipeline"
+  },
+  "id": "freight_engage_poster",
+  "tags": []
+}
