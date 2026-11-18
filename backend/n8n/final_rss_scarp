@@ -1,0 +1,441 @@
+{
+  "name": "LogiPulse - Final RSS Scraper & Decoder Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "e305f884-3860-49ad-b1a7-573505c87e41",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2565f659-546a-431c-8867-b457553fc5be",
+      "name": "Manual Test Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://livenews.avk07373.workers.dev/api/feed?limit=100",
+        "options": {}
+      },
+      "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Get Existing D1 Headlines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        20
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=%22freight+forwarding%22+OR+shipping+OR+logistics+OR+%22import+export%22+OR+%22customs+clearance%22+when:7d&hl=en-IN&gl=IN&ceid=IN:en",
+        "options": {}
+      },
+      "id": "2be54362-a833-49ce-81a4-807cc957702a",
+      "name": "Fetch Logistics RSS News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        -360,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Read existing headlines and URLs already stored in Cloudflare D1\nconst existingTitles = [];\nconst existingUrls = new Set();\ntry {\n  const d1Res = $('Get Existing D1 Headlines').first()?.json;\n  if (d1Res && Array.isArray(d1Res.data)) {\n    for (const item of d1Res.data) {\n      if (item.title) existingTitles.push(item.title);\n      if (item.source_url) existingUrls.add(item.source_url.trim());\n    }\n  }\n} catch (e) {}\n\nconst MAX_DAYS = 7;\nconst cutoffTime = Date.now() - (MAX_DAYS * 24 * 60 * 60 * 1000);\n\nfunction cleanTitleText(t) {\n  let text = (t || '').trim();\n  if (text.includes(' - ')) {\n    const parts = text.split(' - ');\n    parts.pop();\n    text = parts.join(' - ').trim();\n  }\n  if (text.includes(' | ')) {\n    const parts = text.split(' | ');\n    parts.pop();\n    text = parts.join(' | ').trim();\n  }\n  return text;\n}\n\nfunction normalize(t) {\n  return cleanTitleText(t)\n    .toLowerCase()\n    .replace(/[^a-z0-9]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst stopWords = new Set([\n  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',\n  'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',\n  'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',\n  'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',\n  'having', 'he', 'her', 'here', 'how', 'i', 'if', 'in', 'into', 'is', 'it',\n  'its', 'just', 'more', 'most', 'must', 'my', 'no', 'nor', 'not', 'now', 'of',\n  'off', 'on', 'once', 'only', 'or', 'other', 'our', 'out', 'over', 'own', 'same',\n  'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs',\n  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to',\n  'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when',\n  'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'you', 'your'\n]);\n\nfunction extractWords(text) {\n  return new Set(\n    cleanTitleText(text)\n      .toLowerCase()\n      .replace(/[^a-z0-9\\s]/g, ' ')\n      .split(/\\s+/)\n      .filter(w => w.length >= 3 && !stopWords.has(w))\n  );\n}\n\nfunction isSimilar(titleA, titleB) {\n  const normA = normalize(titleA);\n  const normB = normalize(titleB);\n  if (!normA || !normB) return false;\n  if (normA === normB) return true;\n  if (normA.length > 15 && normB.length > 15) {\n    if (normA.startsWith(normB) || normB.startsWith(normA)) return true;\n    if (normA.includes(normB) || normB.includes(normA)) return true;\n  }\n  const a = extractWords(titleA);\n  const b = extractWords(titleB);\n  if (a.size === 0 || b.size === 0) return false;\n  let common = 0;\n  for (const w of a) {\n    if (b.has(w)) common++;\n  }\n  const minSize = Math.min(a.size, b.size);\n  if (common >= 3 && (common / minSize) >= 0.5) return true;\n  if (common >= 4) return true;\n  return (common / minSize) >= 0.6;\n}\n\nconst incomingItems = $input.all();\nconst newItemsToScrape = [];\nconst seenBatchUrls = new Set();\nconst seenBatchTitles = [];\n\nfor (const item of incomingItems) {\n  const raw = item.json;\n  const rawDate = raw.pubDate || raw.isoDate || raw.published;\n  const pubTime = rawDate ? new Date(rawDate).getTime() : Date.now();\n  if (isNaN(pubTime) || pubTime < cutoffTime) continue;\n\n  const googleUrl = (raw.link || raw.guid || '').trim();\n  if (!googleUrl || seenBatchUrls.has(googleUrl) || existingUrls.has(googleUrl)) continue;\n\n  let title = (raw.title || '').trim();\n  let source = 'Industry News';\n  if (title.includes(' - ')) {\n    const parts = title.split(' - ');\n    const src = parts.pop().trim();\n    title = parts.join(' - ').trim();\n    if (src) source = src;\n  } else if (title.includes(' | ')) {\n    const parts = title.split(' | ');\n    const src = parts.pop().trim();\n    title = parts.join(' | ').trim();\n    if (src) source = src;\n  }\n  if (raw.source) {\n    if (typeof raw.source === 'string') {\n      source = raw.source;\n    } else if (typeof raw.source === 'object') {\n      source = raw.source._ || raw.source.name || raw.source['#text'] || source;\n    }\n  }\n\n  // Deduplicate against existing D1 titles\n  let isDup = false;\n  for (const existingTitle of existingTitles) {\n    if (isSimilar(title, existingTitle)) {\n      isDup = true;\n      break;\n    }\n  }\n  if (isDup) continue;\n\n  // Deduplicate within this batch\n  for (const batchTitle of seenBatchTitles) {\n    if (isSimilar(title, batchTitle)) {\n      isDup = true;\n      break;\n    }\n  }\n  if (isDup) continue;\n\n  seenBatchUrls.add(googleUrl);\n  seenBatchTitles.push(title);\n\n  newItemsToScrape.push({\n    json: {\n      title,\n      source,\n      googleUrl,\n      published_at: new Date(pubTime).toISOString(),\n      rawDescription: raw.description || ''\n    }\n  });\n}\n\nreturn newItemsToScrape;\n"
+      },
+      "id": "78a9c201-92df-4d37-881b-858348d407ff",
+      "name": "Filter & Deduplicate New Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+      "name": "Loop Over New Articles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        80,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.googleUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "name": "Fetch Google Redirect Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        20
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst html = typeof item.data === 'string' ? item.data : (item.body || JSON.stringify(item));\n\nconst idMatch = html.match(/data-n-a-id=\"([^\"]+)\"/);\nconst tsMatch = html.match(/data-n-a-ts=\"([^\"]+)\"/);\nconst sgMatch = html.match(/data-n-a-sg=\"([^\"]+)\"/);\n\n// Carry forward article metadata from Loop context\nconst article = $('Loop Over New Articles').item.json;\n\nif (idMatch && tsMatch && sgMatch) {\n  const id = idMatch[1];\n  const ts = tsMatch[1];\n  const sg = sgMatch[1];\n\n  const innerPayload = JSON.stringify([\n    'garturlreq',\n    [\n      ['en-IN', 'IN', ['FINANCE_TOP_INDICES', 'GENESIS_PUBLISHER_SECTION', 'WEB_TEST_1_0_0'], null, null, 1, 1, 'IN:en', null, null, null, null, null, null, null, false, 5],\n      'en-IN', 'IN', true, [3, 5, 9, 18], 1, true, '1022455856', false, false, null, false\n    ],\n    id,\n    parseInt(ts, 10),\n    sg\n  ]);\n\n  const batchPayload = 'f.req=' + encodeURIComponent(JSON.stringify([[\n    ['Fbv4je', innerPayload, null, 'generic']\n  ]]));\n\n  return [{\n    json: {\n      ...article,\n      hasTokens: true,\n      batchPayload\n    }\n  }];\n}\n\n// Fallback if tokens could not be found in redirect HTML\nreturn [{\n  json: {\n    ...article,\n    hasTokens: false,\n    decodedUrl: article.googleUrl\n  }\n}];\n"
+      },
+      "id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+      "name": "Extract Google Tokens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://news.google.com/_/DotsSplashUi/data/batchexecute",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded;charset=UTF-8"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawBody": "={{ $json.batchPayload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+      "name": "Google batchexecute RPC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        20
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst resText = typeof item.data === 'string' ? item.data : (item.body || JSON.stringify(item));\n\n// Carry forward article metadata\nconst article = $('Extract Google Tokens').first().json;\n\nconst urls = resText.match(/https?:\\/\\/[^\\\\\\\"\\s]+/g) || [];\nconst publisherUrls = urls.filter(u => !u.includes('google.com') && !u.includes('gstatic.com'));\n\nconst decodedUrl = publisherUrls[0] || article.googleUrl;\n\nreturn [{\n  json: {\n    ...article,\n    decodedUrl\n  }\n}];\n"
+      },
+      "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+      "name": "Parse RPC Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.decodedUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+      "name": "Fetch Publisher HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1180,
+        20
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst html = typeof item.data === 'string' ? item.data : (item.body || '');\n\n// Retrieve article metadata\nlet article = null;\ntry {\n  article = $('Parse RPC Response').first()?.json;\n} catch (e) {}\nif (!article) {\n  article = $('Extract Google Tokens').first().json;\n}\n\nconst title = article.title;\nconst source = article.source;\nconst directUrl = article.decodedUrl || article.googleUrl;\nconst publishedAt = article.published_at;\n\n// Decode HTML entities\nfunction cleanHtml(str) {\n  if (!str) return '';\n  return str\n    .replace(/<[^>]*>?/gm, ' ')\n    .replace(/&quot;/g, '\\\"')\n    .replace(/&#39;|&apos;|&#8217;|&#8216;/g, \"'\")\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&hellip;|&#8230;/g, '...')\n    .replace(/&mdash;|&#8212;/g, ' — ')\n    .replace(/&ndash;|&#8211;/g, ' – ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n// 1. Extract Real OpenGraph Image\nlet imageUrl = null;\nconst imgMatch = html.match(/<meta[^>]+property=[\"']og:image[\"'][^>]+content=[\"']([^\"']+)[\"']/i) ||\n                 html.match(/<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image[\"']/i);\nif (imgMatch && imgMatch[1]) {\n  const found = imgMatch[1].trim();\n  if (found.startsWith('http') && !found.includes('1x1') && !found.endsWith('.ico') && !found.includes('favicon')) {\n    imageUrl = found;\n  }\n}\n\n// 2. Extract Real OpenGraph Description\nlet description = null;\nconst descMatch = html.match(/<meta[^>]+property=[\"']og:description[\"'][^>]+content=[\"']([^\"']+)[\"']/i) ||\n                  html.match(/<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:description[\"']/i);\nif (descMatch && descMatch[1]) {\n  const cleanDesc = cleanHtml(descMatch[1]);\n  if (cleanDesc.length > 40 && !cleanDesc.toLowerCase().includes('enable javascript')) {\n    description = cleanDesc;\n  }\n}\n\n// 3. Sector Classification\nconst combined = (title + ' ' + (description || '')).toLowerCase();\nlet category = 'Logistics';\nlet contentType = 'news';\n\nif (/(shipping|ocean freight|vessels?|maritime|ports?|terminals?|berths?|container ship|dry bulk|tankers?|red sea|suez|boxship)/.test(combined)) {\n  category = 'Shipping';\n} else {\n  category = 'Logistics';\n}\n\nif (/(surge|plunge|soar|record high|forecast|outlook|inflation|growth rate|freight index|spot rate|downturn|quarterly report|earnings|q1|q2|q3|q4)/.test(combined)) {\n  contentType = 'trend';\n}\n\n// 4. Image Fallback Guard (Curated 23 distinct HD photos)\nif (!imageUrl) {\n  const DIVERSE_IMAGES = [\"https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1570710891163-6d3b5c47248b?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1541427468627-a89a96e5ca1d?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1524522173746-f628baad3644?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1580674285054-bed31e145f59?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1505705694340-019e1e335916?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1200&q=80\",\"https://images.unsplash.com/photo-1586528116493-a029325540fa?auto=format&fit=crop&w=1200&q=80\"];\n  let hash = 0;\n  for (let i = 0; i < title.length; i++) {\n    hash = ((hash << 5) - hash) + title.charCodeAt(i);\n    hash |= 0;\n  }\n  imageUrl = DIVERSE_IMAGES[Math.abs(hash) % DIVERSE_IMAGES.length];\n}\n\n// 5. Description Fallback Guard (Article-tailored briefing if paywalled/empty)\nif (!description || description.length < 50) {\n  let headline = title;\n  if (headline.includes(' - ')) {\n    const p = headline.split(' - ');\n    p.pop();\n    headline = p.join(' - ').trim();\n  }\n  description = `${title}. Direct industry update reported via ${source}. Coverage tracks ongoing operational developments, freight distribution dynamics, and strategic market updates across regional and global transport corridors.`;\n}\n\nreturn [{\n  json: {\n    title,\n    description,\n    source,\n    source_url: directUrl,\n    image_url: imageUrl,\n    category,\n    published_at: publishedAt,\n    content_type: contentType\n  }\n}];\n"
+      },
+      "id": "a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d",
+      "name": "Extract OG Assets & Fallback Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://livenews.avk07373.workers.dev/api/feed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "id": "f58de201-419b-4bc6-921c-34859a4bb331",
+      "name": "Ingest into LogiPulse D1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1620,
+        20
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet inserted = 0;\nlet duplicates = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const j = item.json;\n  const statusCode = j.statusCode || j.status || 0;\n  if (statusCode === 201 || (j.id && !j.duplicate)) {\n    inserted++;\n  } else if (statusCode === 409 || j.duplicate || j.status === 'duplicate_skipped') {\n    duplicates++;\n  } else {\n    errors++;\n  }\n}\n\nreturn [{\n  json: {\n    execution_time: new Date().toISOString(),\n    total_processed: items.length,\n    newly_inserted: inserted,\n    duplicates_skipped: duplicates,\n    errors: errors,\n    pipeline: 'Google News URL Decoder & Publisher OpenGraph Scraper',\n    status: errors === 0 ? 'success' : 'completed'\n  }\n}];\n"
+      },
+      "id": "893c0291-72da-4f11-9a75-b82736159c34",
+      "name": "Ingestion Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Existing D1 Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test Run": {
+      "main": [
+        [
+          {
+            "node": "Get Existing D1 Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing D1 Headlines": {
+      "main": [
+        [
+          {
+            "node": "Fetch Logistics RSS News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Logistics RSS News": {
+      "main": [
+        [
+          {
+            "node": "Filter & Deduplicate New Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Deduplicate New Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over New Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over New Articles": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google Redirect Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ingestion Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google Redirect Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Google Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Google Tokens": {
+      "main": [
+        [
+          {
+            "node": "Google batchexecute RPC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google batchexecute RPC": {
+      "main": [
+        [
+          {
+            "node": "Parse RPC Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse RPC Response": {
+      "main": [
+        [
+          {
+            "node": "Fetch Publisher HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Publisher HTML": {
+      "main": [
+        [
+          {
+            "node": "Extract OG Assets & Fallback Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract OG Assets & Fallback Guard": {
+      "main": [
+        [
+          {
+            "node": "Ingest into LogiPulse D1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest into LogiPulse D1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over New Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
