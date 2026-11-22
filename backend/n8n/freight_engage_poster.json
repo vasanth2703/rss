@@ -91,44 +91,51 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={{ $env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY' }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"You are the Senior Editor of a global logistics and freight forwarding platform.\\nBelow are the candidate freight news articles from the last 2 days:\\n\\n\" + JSON.stringify($json.candidates, null, 2) + \"\\n\\nTask: Select the single (#1) most critical, trending, and commercially actionable news story for freight forwarders, shippers, and logistics professionals. Prioritize: freight rate volatility, sea lane & chokepoint disruptions (Red Sea, Panama, strikes), major shipping alliance shifts, or critical regulatory changes over routine local press releases.\\n\\nReturn JSON strictly matching this schema:\\n{\\n  \\\"selected_candidate_id\\\": 0,\\n  \\\"reason\\\": \\\"1-2 sentence explanation of why this story has the highest commercial impact\\\"\\n}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\",\n    \"temperature\": 0.1\n  }\n}",
-        "options": {
-          "timeout": 30000
-        }
+        "promptType": "define",
+        "text": "={{\"You are the Senior Editor of a global logistics and freight forwarding platform.\\nBelow are the candidate freight news articles from the last 2 days:\\n\\n\" + JSON.stringify($json.candidates, null, 2) + \"\\n\\nTask: Select the single (#1) most critical, trending, and commercially actionable news story for freight forwarders, shippers, and logistics professionals. Prioritize: freight rate volatility, sea lane & chokepoint disruptions (Red Sea, Panama, strikes), major shipping alliance shifts, or critical regulatory changes over routine local press releases.\\n\\nReturn JSON strictly matching this schema:\\n{\\n  \\\"selected_candidate_id\\\": 0,\\n  \\\"reason\\\": \\\"1-2 sentence explanation of why this story has the highest commercial impact\\\"\\n}\"}}",
+        "hasOutputParser": false
       },
-      "id": "fe-node-6-gemini-evaluator",
+      "id": "fe-node-6-gemini-chain",
       "name": "Gemini AI Editorial Evaluator",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
       "position": [
         1160,
         320
-      ],
-      "onError": "continueRegularOutput"
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Select the AI chosen candidate from Gemini's response\nlet selectedId = 0;\nlet aiReason = 'Top algorithmic candidate selected (fallback).';\n\ntry {\n  const geminiRes = $input.first()?.json;\n  // Handle both direct JSON and Gemini text response structures\n  const textPayload = geminiRes?.candidates?.[0]?.content?.parts?.[0]?.text;\n  if (textPayload) {\n    const parsed = typeof textPayload === 'string' ? JSON.parse(textPayload) : textPayload;\n    if (typeof parsed.selected_candidate_id === 'number') {\n      selectedId = parsed.selected_candidate_id;\n      aiReason = parsed.reason || aiReason;\n    }\n  }\n} catch (e) {\n  // If parsing fails or API key issue, gracefully fall back to Candidate 0\n}\n\n// Fetch original articles from Filter node\nconst filterData = $('Filter & Deduplicate Freight Content').first()?.json;\nconst rawArticles = filterData?.raw_articles || [];\n\n// Select strictly 1 winner article\nconst winner = rawArticles[selectedId] || rawArticles[0];\n\nif (!winner) {\n  return [];\n}\n\nwinner.ai_editorial_reason = aiReason;\n\nreturn [{\n  json: winner\n}];\n"
+        "modelName": "models/gemini-2.5-flash",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "fe-node-6-gemini-model",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        520
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "googleGeminiAccount",
+          "name": "Google Gemini(PaLM) API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Select the AI chosen candidate from Gemini's response\nlet selectedId = 0;\nlet aiReason = 'Top candidate selected by pipeline.';\n\ntry {\n  const itemJson = $input.first()?.json;\n  // Handle output from LangChain Basic LLM Chain, Chat Model, or HTTP node\n  const rawText = itemJson?.text || itemJson?.response?.text || itemJson?.candidates?.[0]?.content?.parts?.[0]?.text;\n  if (rawText) {\n    // Strip markdown code fences if model returned ```json ... ```\n    const cleanText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();\n    const parsed = JSON.parse(cleanText);\n    if (typeof parsed.selected_candidate_id === 'number') {\n      selectedId = parsed.selected_candidate_id;\n      aiReason = parsed.reason || aiReason;\n    }\n  }\n} catch (e) {\n  // If parsing fails or API issue, gracefully fall back to Candidate 0\n}\n\n// Fetch original articles from Filter node\nconst filterData = $('Filter & Deduplicate Freight Content').first()?.json;\nconst rawArticles = filterData?.raw_articles || [];\n\n// Select strictly 1 winner article\nconst winner = rawArticles[selectedId] || rawArticles[0];\n\nif (!winner) {\n  return [];\n}\n\nwinner.ai_editorial_reason = aiReason;\n\nreturn [{\n  json: winner\n}];\n"
       },
       "id": "fe-node-7-select-winner",
       "name": "Select AI Chosen Article (1 Post)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1400,
+        1420,
         320
       ]
     },
@@ -152,7 +159,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1640,
+        1660,
         320
       ],
       "onError": "continueRegularOutput"
@@ -206,7 +213,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1880,
+        1900,
         320
       ]
     },
@@ -219,7 +226,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2120,
+        2140,
         320
       ]
     }
@@ -280,6 +287,17 @@
         ]
       ]
     },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gemini AI Editorial Evaluator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Gemini AI Editorial Evaluator": {
       "main": [
         [
@@ -329,7 +347,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "freight-engage-v4-gemini",
+  "versionId": "freight-engage-v5-official-gemini-node",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "freight-engage-pipeline"
